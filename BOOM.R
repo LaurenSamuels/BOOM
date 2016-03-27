@@ -1,6 +1,7 @@
 BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL, 
     mcCores= 2, tx.indicator= "treat", outcome= "y", seed= 1235,
-    return.dat= TRUE, caliper= 0.2, exactVarNames= NULL){
+    return.dat= TRUE, caliper= 0.2, exactVarNames= NULL,
+    recalcDistance= TRUE){
     # Returns a vector of various summary values from the BOOM procedure
 
     # dat: the original dataset
@@ -60,6 +61,10 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
 
     all.orig.ids.easy <- 1:N
 
+    # for use w/ non-recalculated PS
+    logitPS.tx.orig <- logitPS.orig[isTreated]
+    logitPS.ctrl.orig <- logitPS.orig[isControl]
+
     bootStuff <- mclapply(1:n.boot, function(x) {
         # Modified from Austin & Small (2014) --- they did not condition on
         # observed tx & ctrl group sizes
@@ -81,7 +86,11 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
         logitPS.ordered.tmp <- rep(NA, N)
         count.vector.matched.tmp <- rep(0, N)
 
-        logitPS <- GetLogitPS(boot.sample, ps.formula)
+        if (recalcDistance) {
+            logitPS <- GetLogitPS(boot.sample, ps.formula)
+        } else
+            logitPS <- c(logitPS.tx.orig[tx.sample.indices], logitPS.ctrl.orig[ctrl.sample.indices])
+        }
         if (is.null(exactVarNames)) {
             my.X <- logitPS
             my.exact <- FALSE
