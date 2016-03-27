@@ -88,7 +88,7 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
 
         if (recalcDistance) {
             logitPS <- GetLogitPS(boot.sample, ps.formula)
-        } else
+        } else {
             logitPS <- c(logitPS.tx.orig[tx.sample.indices], logitPS.ctrl.orig[ctrl.sample.indices])
         }
         if (is.null(exactVarNames)) {
@@ -134,7 +134,7 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
                 both.tbl
 
             # For calculating avg logitPS (may not be a useful quantity)
-            # logitPS vector, by easy ID
+            # logitPS vector is ordered by easy ID
             logitPS.tmp.matrix <- cbind(logitPS, all.orig.ids.easy.insample)
             logitPS.tmp.matrix <- logitPS.tmp.matrix[!duplicated(all.orig.ids.easy.insample), ]
             logitPS.tmp.vec <- logitPS.tmp.matrix[, 1]
@@ -142,10 +142,8 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
             logitPS.ordered.tmp[logitPS.tmp.matrix[, 2]] <- logitPS.tmp.vec
 
             # counts for weights
-            tx.orig.ids.easy.matched <- pairIndices[, 1]
-            ctrl.orig.ids.easy.matched <- pairIndices[, 2]
-            all.orig.ids.easy.matched <- c(tx.orig.ids.easy.matched,
-                ctrl.orig.ids.easy.matched)
+            all.orig.ids.easy.matched <- all.orig.ids.easy.insample[c(pairIndices[, 1],
+                pairIndices[, 2])]
             both.tbl.matched <- table(all.orig.ids.easy.matched) 
             # this vector is in `easy' order (all tx, then all ctrl)
             count.vector.matched.tmp[as.numeric(names(both.tbl.matched))] <-
