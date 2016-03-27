@@ -42,10 +42,14 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
     logitPS.orig <- GetLogitPS(dat, ps.formula)
     PS.orig <- InvLogit(logitPS.orig)
     att.wts.orig <- treat + (1 - treat) * PS.orig / (1 - PS.orig)
+    # from Li and Greene 2013:
+    match.wts.orig = pmin(1 - PS.orig, PS.orig) / 
+        (treat * PS.orig + (1 - treat) * (1 - PS.orig))
     #################
 
 
     isTreated <- treat == 1
+    # todo someday: the whole indexing/tracking thing would be easier w/ data.table
     tx.orig.dat <- dat[isTreated, ]
     n.treated.orig <- nrow(tx.orig.dat)
     tx.orig.ids.easy <- 1:n.treated.orig
@@ -67,6 +71,8 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
             sample(1:nrow(ctrl.orig.dat), size= nrow(ctrl.orig.dat), replace= TRUE)
         ctrl.sample <- ctrl.orig.dat[ctrl.sample.indices, ]
 
+        # in boot.sample, the first n.treated.orig rows are treated people,
+        #   remaining rows are control people
         boot.sample <- rbind(tx.sample, ctrl.sample, make.row.names= FALSE)
 
         est.mean.tx.tmp <- est.mean.ctrl.tmp <- est.TE.lm.tmp <- NA
@@ -87,8 +93,10 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
             treatvec= boot.sample[[tx.indicator]], 
             X       = my.X, 
             exact   = my.exact,
-            caliper = caliper)
-        # tx indices are in 1st col, ctrl in 2nd col
+            caliper = caliper
+        )
+        # Tx indices are in 1st col, ctrl in 2nd col.
+        #    These indices are indices from boot.sample
         # We are handling PS estimation/matching errors by skipping that resample.  
         #    Maybe not the best way, but it rarely happens.
         if(!is.null(pairIndices)){
@@ -112,13 +120,16 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
             all.orig.ids.easy.insample <- c(tx.orig.ids.easy.insample,
                 ctrl.orig.ids.easy.insample)
             both.tbl <- table(all.orig.ids.easy.insample) 
+            # count.vector.tmp is in `easy' order (all tx, then all ctrl)
             count.vector.tmp[as.numeric(names(both.tbl))] <-
                 both.tbl
 
+            # For calculating avg logitPS (may not be a useful quantity)
             # logitPS vector, by easy ID
             logitPS.tmp.matrix <- cbind(logitPS, all.orig.ids.easy.insample)
             logitPS.tmp.matrix <- logitPS.tmp.matrix[!duplicated(all.orig.ids.easy.insample), ]
             logitPS.tmp.vec <- logitPS.tmp.matrix[, 1]
+            # this vector is in `easy' order (all tx, then all ctrl)
             logitPS.ordered.tmp[logitPS.tmp.matrix[, 2]] <- logitPS.tmp.vec
 
             # counts for weights
@@ -127,6 +138,7 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
             all.orig.ids.easy.matched <- c(tx.orig.ids.easy.matched,
                 ctrl.orig.ids.easy.matched)
             both.tbl.matched <- table(all.orig.ids.easy.matched) 
+            # this vector is in `easy' order (all tx, then all ctrl)
             count.vector.matched.tmp[as.numeric(names(both.tbl.matched))] <-
                 both.tbl.matched
 
@@ -137,6 +149,7 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
 
         # return from mclapply:
         list(
+            # TODO: give these names & use names below.
             # scalars
             est.mean.tx.tmp, #1
             est.mean.ctrl.tmp, #2
@@ -187,13 +200,15 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
     # matrix: row = resample; col = subject
     count.matrix.matched <- 
         do.call(rbind, lapply(bootStuff, function(x) x[[7]]))
-    indicesToKeep <- rowSums(count.matrix.matched) != 0
-    count.matrix.matched <- count.matrix.matched[indicesToKeep, ]
-    num.tx.matched <- 
-       rowSums(count.matrix.matched[, tx.orig.ids.easy])
-    row.multiplier <- n.treated.orig / num.tx.matched
+    #num.tx.matched <- 
+    #   rowSums(count.matrix.matched[, tx.orig.ids.easy])
+    #row.multiplier <- n.treated.orig / num.tx.matched
     # 1st el. in row.multiplier X each element in 1st row of c.m.m., etc.
-    BOOM.wts.easy <- colMeans(row.multiplier * count.matrix.matched)
+
+    #BOOM.wts.easy <- colMeans(row.multiplier * count.matrix.matched)
+
+    BOOM.wts.easy <- colSums(count.matrix.matched) / colSums(count.matrix)
+
     # now get it in the order of the original dataset
     BOOM.wts <- rep(NA, N)
     BOOM.wts[isTreated] <- BOOM.wts.easy[tx.orig.ids.easy]
@@ -231,8 +246,7 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
         PS.orig = PS.orig, 
         att.wts.orig = att.wts.orig,
         # from Li and Greene 2013:
-        match.wts.orig = pmin(1 - PS.orig, PS.orig) / 
-            (treat * PS.orig + (1 - treat) * (1 - PS.orig)),
+        match.wts.orig = match.wts.orig,
 
         est.TE= est.TE, 
         est.SE.naive= est.SE.naive,  # not recommended for use; just for comparison
@@ -249,7 +263,7 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
         est.TEs= est.TEs,
         est.TEs.lm= est.TEs.lm,
 
-        logitPS.avg= logitPS.avg,
+        logitPS.avg= logitPS.avg, # may or may not be useful
         PS.avg= PS.avg,
         BOOM.wts= BOOM.wts,
 
