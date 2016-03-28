@@ -1,7 +1,9 @@
 BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL, 
     mcCores= 2, tx.indicator= "treat", outcome= "y", seed= 1235,
-    return.dat= TRUE, caliper= 0.2, exactVarNames= NULL,
-    recalcDistance= TRUE){
+    return.dat= TRUE, recalcDistance= TRUE,
+    exactVarNames= NULL, caliper= 0.2, replace= FALSE,
+    conf.level= 0.95
+    ){
     # Returns a vector of various summary values from the BOOM procedure
 
     # dat: the original dataset
@@ -11,6 +13,13 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
     # mcCores: number of cores for mclapply()
     # tx.indicator: name of the treatment indicator variable in dat (must be 1/0 for now)
     # y: name of the continuous outcome variable in dat
+    # seed: random seed for use by this function. 
+    # return.dat (boolean): Return the original dataset?
+    # recalcDistance (boolean): re-calculate the PS or other distance measure in each resample?
+    # exactVarNames: vector of names of variables on which to match exactly
+    # caliper: optional caliper for use with Matching. 
+    # replace (boolean): Match with replacement?
+    # conf.level: level to use for confidence intervals
     
     N <- nrow(dat) # tot number of subjects
     treat <- dat[[tx.indicator]]
@@ -24,6 +33,13 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
 
     # TODO: return CIs (ask for level)
     # TODO: allow chr/factor tx indicator?
+
+    # Argument checking
+    # from t.test code: getAnywhere("t.test.default")
+    if (!missing(conf.level) && (length(conf.level) != 1 || !is.finite(conf.level) || 
+        conf.level < 0 || conf.level > 1)) 
+        stop("'conf.level' must be a single number between 0 and 1")
+
 
     ###########################################################
     # Take care of the random seed
@@ -99,10 +115,11 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
             my.exact <- c(FALSE, rep(TRUE, length(exactVarNames)))
         }
         pairIndices <- GetPairs(
-            treatvec= boot.sample[[tx.indicator]], 
+            Tr      = boot.sample[[tx.indicator]], 
             X       = my.X, 
             exact   = my.exact,
-            caliper = caliper
+            caliper = caliper,
+            replace = replace
         )
         # Tx indices are in 1st col, ctrl in 2nd col.
         #    These indices are indices from boot.sample
@@ -237,39 +254,60 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
         EfronEstimates(count.matrix.tx, est.means.tx)
     efron2.ctrl <- 
         EfronEstimates(count.matrix.ctrl, est.means.ctrl)
+    est.SE.efron    <- sqrt(efron2.tx[1] + efron2.ctrl[1])
+    est.SE.efron.bc <- sqrt(efron2.tx[2] + efron2.ctrl[2])
+
     # TODO: return NA if no model given
     efron.lm <- 
         EfronEstimates(count.matrix, est.TEs.lm)
+    est.SE.lm.efron= sqrt(efron.lm[1])
+    est.SE.lm.efron.bc= sqrt(efron.lm[2])
 
     # TODO: maybe take these out? on the other hand they make an interesting comparison
     est.SE.naive <- sd(est.TEs, na.rm= TRUE)
     # TODO: return NA if no model given
     est.SE.lm.naive <- sd(est.TEs.lm, na.rm= TRUE)
 
-    list(  
-        treat= treat,
+    # todo: add pvals. This code is from t.test, just here as reminder:
+    #pval <- 2 * pt(-abs(tstat), df)
 
+
+    list(  
+        # vectors of length N, in order of original dataset
+        treat= treat,
         logitPS.orig = logitPS.orig, 
         PS.orig = PS.orig, 
         att.wts.orig = att.wts.orig,
         # from Li and Greene 2013:
         match.wts.orig = match.wts.orig,
 
+        # scalar results from BOOM w/ NO further covariate adj
         est.TE= est.TE, 
         est.SE.naive= est.SE.naive,  # not recommended for use; just for comparison
-        est.SE.efron= sqrt(efron2.tx[1] + efron2.ctrl[1]),
-        est.SE.efron.bc= sqrt(efron2.tx[2] + efron2.ctrl[2]),
+        est.SE.efron= est.SE.efron,
+        est.SE.efron.bc= est.SE.efron.bc,
 
+        # scalar results from BOOM with further covariate adj
         est.TE.lm= est.TE.lm, 
         est.SE.lm.naive= est.SE.lm.naive,  # not recommended for use; just for comparison
-        est.SE.lm.efron= sqrt(efron.lm[1]),
-        est.SE.lm.efron.bc= sqrt(efron.lm[2]),
+        est.SE.lm.efron= est.SE.lm.efron,
+        est.SE.lm.efron.bc= est.SE.lm.efron.bc,
 
+        # confidence intervals
+        conf.int.efron = GetConfInt(est.TE, est.SE.efron, conf.level),
+        conf.int.efron.bc = GetConfInt(est.TE, est.SE.efron.bc, conf.level),
+        conf.int.lm.efron = GetConfInt(est.TE.lm, est.SE.lm.efron, conf.level),
+        conf.int.lm.efron.bc = GetConfInt(est.TE.lm, est.SE.lm.efron.bc, conf.level),
+
+        # scalars
         tot.errs= tot.errs,
+        conf.level= conf.level,
 
+        # vectors of length n.boot
         est.TEs= est.TEs,
         est.TEs.lm= est.TEs.lm,
 
+        # vectors of length N, in order of original dataset
         logitPS.avg= logitPS.avg, # may or may not be useful
         PS.avg= PS.avg,
         BOOM.wts= BOOM.wts,
