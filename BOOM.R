@@ -28,7 +28,9 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
     # TODO: error handling: missing values of outcome
     # TODO: error handling: missing values of vars in PS model
     # TODO: error handling: missing values of vars in outcome model
+    #***************
     # TODO: error handling: tx indicator not in models
+    #***************
     # TODO: error handling: exactvars not in dset
 
     # TODO: return CIs (ask for level)
