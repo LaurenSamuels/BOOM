@@ -33,7 +33,7 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
     #***************
     # TODO: error handling: exactvars not in dset
 
-    # TODO: return CIs (ask for level)
+    # TODO: return # of matched pairs per iteration, and/or avg # matched pairs
     # TODO: allow chr/factor tx indicator?
 
     # Argument checking
