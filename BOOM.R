@@ -205,15 +205,23 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
     est.TEs.lm <- do.call(c, lapply(bootStuff, function(x) x[[3]]))
 
     # matrix: row = resample; col = subject
+    # columns are in 'easy' order
     count.matrix <- 
         do.call(rbind, lapply(bootStuff, function(x) x[[4]]))
     count.matrix.tx <- count.matrix[, tx.orig.ids.easy]
     count.matrix.ctrl <- count.matrix[, ctrl.orig.ids.easy]
+    # vector of length n, in 'easy' order
+    count.vector.easy <- colSums(count.matrix)
+    # now get it in the order of the original dataset
+    count.vector <- rep(NA, N)
+    count.vector[isTreated] <- count.vector.easy[tx.orig.ids.easy]
+    count.vector[isControl] <- count.vector.easy[ctrl.orig.ids.easy]
 
-    # vectors of length n.boot
+    # vector of length n.boot
     num.errs <- do.call(c, lapply(bootStuff, function(x) x[[5]]))
 
     # matrix: row = resample; col = subject
+    # columns are in 'easy' order
     logitPS.matrix <- 
         do.call(rbind, lapply(bootStuff, function(x) x[[6]]))
     logitPS.avg.easy <- colMeans(logitPS.matrix, na.rm= TRUE)
@@ -224,22 +232,21 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
     PS.avg <- InvLogit(logitPS.avg)
     
     # matrix: row = resample; col = subject
+    # columns are in 'easy' order
     count.matrix.matched <- 
         do.call(rbind, lapply(bootStuff, function(x) x[[7]]))
-    #num.tx.matched <- 
-    #   rowSums(count.matrix.matched[, tx.orig.ids.easy])
-    #row.multiplier <- n.treated.orig / num.tx.matched
-    # 1st el. in row.multiplier X each element in 1st row of c.m.m., etc.
 
-    #BOOM.wts.easy <- colMeans(row.multiplier * count.matrix.matched)
-
-    BOOM.wts.easy <- colSums(count.matrix.matched) / colSums(count.matrix)
-
+    # todo: make sure RG OK with this approach (setting to zero)
+    BOOM.wts.easy <- ifelse(count.vector.easy == 0, 0,
+        colSums(count.matrix.matched) / count.vector.easy)
     # now get it in the order of the original dataset
     BOOM.wts <- rep(NA, N)
     BOOM.wts[isTreated] <- BOOM.wts.easy[tx.orig.ids.easy]
     BOOM.wts[isControl] <- BOOM.wts.easy[ctrl.orig.ids.easy]
 
+    # number of matched pairs per resample
+    num.pairs <- rowSums(count.matrix.matched) / 2
+    
 
     # Summary stats (bagged statistics)
     est.TE <- mean(est.TEs, na.rm= TRUE)
@@ -276,6 +283,7 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
 
     list(  
         # vectors of length N, in order of original dataset
+        # These are all things that can be calculated w/o BOOM
         treat= treat,
         logitPS.orig = logitPS.orig, 
         PS.orig = PS.orig, 
@@ -302,16 +310,20 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
         conf.int.lm.efron.bc = GetConfInt(est.TE.lm, est.SE.lm.efron.bc, conf.level),
 
         # scalars
+        n.boot= n.boot,
         tot.errs= tot.errs,
         conf.level= conf.level,
+        avg.num.pairs= mean(num.pairs),
 
         # vectors of length n.boot
         est.TEs= est.TEs,
         est.TEs.lm= est.TEs.lm,
+        num.pairs= num.pairs,
 
         # vectors of length N, in order of original dataset
         logitPS.avg= logitPS.avg, # may or may not be useful
         PS.avg= PS.avg,
+        count.vector= count.vector,
         BOOM.wts= BOOM.wts,
 
         dat= if (return.dat) dat else NA
