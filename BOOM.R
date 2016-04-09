@@ -60,7 +60,8 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
     # first: get some estimates on original data
     logitPS.orig <- GetLogitPS(dat, ps.formula)
     PS.orig <- InvLogit(logitPS.orig)
-    att.wts.orig <- treat + (1 - treat) * PS.orig / (1 - PS.orig)
+    att.wts.orig <- treat           + (1 - treat) * PS.orig / (1 - PS.orig)
+    ate.wts.orig <- treat / PS.orig + (1 - treat)           / (1 - PS.orig)
     # from Li and Greene 2013:
     match.wts.orig = pmin(1 - PS.orig, PS.orig) / 
         (treat * PS.orig + (1 - treat) * (1 - PS.orig))
@@ -288,6 +289,7 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
         logitPS.orig = logitPS.orig, 
         PS.orig = PS.orig, 
         att.wts.orig = att.wts.orig,
+        ate.wts.orig = ate.wts.orig,
         # from Li and Greene 2013:
         match.wts.orig = match.wts.orig,
 
