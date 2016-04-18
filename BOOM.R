@@ -268,12 +268,16 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
         EfronEstimates(count.matrix.ctrl, est.means.ctrl)
     est.SE.efron    <- sqrt(efron2.tx[1] + efron2.ctrl[1])
     est.SE.efron.bc <- sqrt(efron2.tx[2] + efron2.ctrl[2])
+    p.value.efron    <- GetPValue(est.TE, est.SE.efron)
+    p.value.efron.bc <- GetPValue(est.TE, est.SE.efron.bc)
 
     # TODO: return NA if no model given
     efron.lm <- 
         EfronEstimates(count.matrix, est.TEs.lm)
-    est.SE.lm.efron= sqrt(efron.lm[1])
-    est.SE.lm.efron.bc= sqrt(efron.lm[2])
+    est.SE.lm.efron <- sqrt(efron.lm[1])
+    est.SE.lm.efron.bc <- sqrt(efron.lm[2])
+    p.value.lm.efron    <- GetPValue(est.TE.lm, est.SE.lm.efron)
+    p.value.lm.efron.bc <- GetPValue(est.TE.lm, est.SE.lm.efron.bc)
 
     # TODO: maybe take these out? on the other hand they make an interesting comparison
     est.SE.naive <- sd(est.TEs, na.rm= TRUE)
@@ -300,12 +304,16 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
         est.SE.naive= est.SE.naive,  # not recommended for use; just for comparison
         est.SE.efron= est.SE.efron,
         est.SE.efron.bc= est.SE.efron.bc,
+        p.value.efron= p.value.efron,
+        p.value.efron.bc= p.value.efron.bc,
 
         # scalar results from BOOM with further covariate adj
         est.TE.lm= est.TE.lm, 
         est.SE.lm.naive= est.SE.lm.naive,  # not recommended for use; just for comparison
         est.SE.lm.efron= est.SE.lm.efron,
         est.SE.lm.efron.bc= est.SE.lm.efron.bc,
+        p.value.lm.efron= p.value.lm.efron,
+        p.value.lm.efron.bc= p.value.lm.efron.bc,
 
         # confidence intervals
         conf.int.efron = GetConfInt(est.TE, est.SE.efron, conf.level),
