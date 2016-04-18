@@ -59,6 +59,8 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
     #################
     # first: get some estimates on original data
     logitPS.orig <- GetLogitPS(dat, ps.formula)
+    # todo: make this nicer. turn into stopifnot.
+    if (is.null(logitPS.orig)) print("Can't fit PS model on original data")
     PS.orig <- InvLogit(logitPS.orig)
     att.wts.orig <- treat           + (1 - treat) * PS.orig / (1 - PS.orig)
     ate.wts.orig <- treat / PS.orig + (1 - treat)           / (1 - PS.orig)
