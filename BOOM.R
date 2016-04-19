@@ -1,28 +1,38 @@
-BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL, 
-    mcCores= 2, tx.indicator= "treat", outcome= "y", seed= 1235,
-    return.dat= TRUE, recalcDistance= TRUE,
-    exactVarNames= NULL, caliper= 0.2, replace= FALSE,
-    conf.level= 0.95
+BOOM <- function(dat, n.boot, tx.indicator, outcome, 
+    distanceType= "propensity",
+    recalcDistance= TRUE,
+    propensity.formula = NULL, 
+    prognostic.formula = NULL, 
+    outcome.formula= NULL, 
+    mcCores= 2, seed= 1235,
+    return.dat= TRUE, 
+    conf.level= 0.95,
+    exactVarNames= NULL, 
+    caliper= 0.2, replace= FALSE,
+    Weight.matrix= NULL, restrict= NULL,
     ){
     # Returns a vector of various summary values from the BOOM procedure
 
     # dat: the original dataset
     # n.boot: number of bootstrap resamples to use
-    # ps.formula: propensity score formula to use w/ lrm
-    # lm.formula: optional outcome formula
-    # mcCores: number of cores for mclapply()
     # tx.indicator: name of the treatment indicator variable in dat (must be 1/0 for now)
-    # y: name of the continuous outcome variable in dat
+    # outcome: name of the continuous outcome variable in dat
+    # distanceType: one of "propensity" (propensity score), "prognostic" (prognostic score), or "MD" (Mahalanobis) 
+    # recalcDistance (boolean): re-calculate the PS or other distance measure in each resample?
+    # propensity.formula: propensity score formula to use w/ lrm
+    # prognostic.formula: prognostic score formula
+    # outcome.formula: optional outcome formula. Currently must not involve interactions with the treatment indicator.
+    # mcCores: number of cores for mclapply()
     # seed: random seed for use by this function. 
     # return.dat (boolean): Return the original dataset?
-    # recalcDistance (boolean): re-calculate the PS or other distance measure in each resample?
-    # exactVarNames: vector of names of variables on which to match exactly
-    # caliper: optional caliper for use with Matching. 
-    # replace (boolean): Match with replacement?
     # conf.level: level to use for confidence intervals
+    # exactVarNames: vector of names of variables on which to match exactly
+    # caliper through restrict: as in Matching::Match
     
-    N <- nrow(dat) # tot number of subjects
-    treat <- dat[[tx.indicator]]
+    N         <- nrow(dat) # tot number of subjects
+    treat     <- dat[[tx.indicator]]
+    isTreated <- treat == 1
+    isControl <- treat == 0
 
     # TODO: error handling: missing values of tx.indicator
     # TODO: error handling: missing values of outcome
@@ -32,9 +42,10 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
     # TODO: error handling: tx indicator not in models
     #***************
     # TODO: error handling: exactvars not in dset
+    # TODO: error handling: illegal distance type
 
-    # TODO: return # of matched pairs per iteration, and/or avg # matched pairs
     # TODO: allow chr/factor tx indicator?
+    # TODO: maybe return the whole call?
 
     # Argument checking
     # from t.test code: getAnywhere("t.test.default")
@@ -58,33 +69,46 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
 
     #################
     # first: get some estimates on original data
-    logitPS.orig <- GetLogitPS(dat, ps.formula)
-    # todo: make this nicer. turn into stopifnot.
-    if (is.null(logitPS.orig)) print("Can't fit PS model on original data")
-    PS.orig <- InvLogit(logitPS.orig)
-    att.wts.orig <- treat           + (1 - treat) * PS.orig / (1 - PS.orig)
-    ate.wts.orig <- treat / PS.orig + (1 - treat)           / (1 - PS.orig)
-    # from Li and Greene 2013:
-    match.wts.orig = pmin(1 - PS.orig, PS.orig) / 
-        (treat * PS.orig + (1 - treat) * (1 - PS.orig))
+    logitPS.orig <- PS.orig <- att.wts.orig <- ate.wts.orig <-
+        match.wts.orig <- NA
+
+    # people might provide a propensity score formula even if
+    #    they are not using it for BOOM distance measure
+    if (!is.null(propensity.formula)) {
+        logitPS.orig <- GetLogitPS(dat, propensity.formula)
+        # todo: make this nicer. turn into stopifnot.
+        if (is.null(logitPS.orig)) print("Can't fit PS model on original data")
+        PS.orig <- InvLogit(logitPS.orig)
+        att.wts.orig <- treat + (1 - treat) * PS.orig / (1 - PS.orig)
+        ate.wts.orig <- treat / PS.orig + (1 - treat) / (1 - PS.orig)
+        # from Li and Greene 2013:
+        match.wts.orig = pmin(1 - PS.orig, PS.orig) / 
+            (treat * PS.orig + (1 - treat) * (1 - PS.orig))
+    }
     #################
 
 
-    isTreated <- treat == 1
-    # todo someday: the whole indexing/tracking thing would be easier w/ data.table
+    # todo someday: the whole indexing/tracking thing might be easier w/ data.table
     tx.orig.dat <- dat[isTreated, ]
     n.treated.orig <- nrow(tx.orig.dat)
     tx.orig.ids.easy <- 1:n.treated.orig
 
-    isControl <- treat == 0
     ctrl.orig.dat <- dat[isControl, ]
     ctrl.orig.ids.easy <- (n.treated.orig + 1) : N
 
     all.orig.ids.easy <- 1:N
 
-    # for use w/ non-recalculated PS
-    logitPS.tx.orig <- logitPS.orig[isTreated]
-    logitPS.ctrl.orig <- logitPS.orig[isControl]
+    # for use w/ non-recalculated distances
+    if (!recalcDistance) {
+        if (distanceType == "propensity") {
+            logitPS.tx.orig   <- logitPS.orig[isTreated]
+            logitPS.ctrl.orig <- logitPS.orig[isControl]
+        } else if (distanceType == "prognostic") {
+            # todo
+        } else if (distanceType == "MD") {
+            # todo
+        }
+    }
 
     bootStuff <- mclapply(1:n.boot, function(x) {
         # Modified from Austin & Small (2014) --- they did not condition on
@@ -108,27 +132,62 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
         count.vector.matched.tmp <- rep(0, N)
 
         if (recalcDistance) {
-            logitPS <- GetLogitPS(boot.sample, ps.formula)
+            if (distanceType == "propensity") {
+                logitPS <- 
+                    GetLogitPS(boot.sample, propensity.formula)
+            } else if (distanceType == "prognostic") {
+                # todo
+            } else if (distanceType == "MD") {
+                # todo
+            }
         } else {
-            logitPS <- c(logitPS.tx.orig[tx.sample.indices], logitPS.ctrl.orig[ctrl.sample.indices])
+            if (distanceType == "propensity") {
+                logitPS <- c(logitPS.tx.orig[tx.sample.indices], 
+                    logitPS.ctrl.orig[ctrl.sample.indices])
+            } else if (distanceType == "prognostic") {
+                # todo
+            } else if (distanceType == "MD") {
+                # todo
+            }
         }
         if (is.null(exactVarNames)) {
-            my.X <- logitPS
             my.exact <- FALSE
-        } else {
-            my.X <- cbind(logitPS, boot.sample[, exactVarNames])
-            my.exact <- c(FALSE, rep(TRUE, length(exactVarNames)))
+            if (distanceType == "propensity") {
+                my.X <- logitPS
+            } else if (distanceType == "prognostic") {
+                # todo
+            } else if (distanceType == "MD") {
+                # todo
+            }
+        } else { # we want to match exactly on some vars
+            if (distanceType == "propensity") {
+                my.X <- cbind(logitPS, boot.sample[, exactVarNames])
+                my.exact <- 
+                    c(FALSE, rep(TRUE, length(exactVarNames)))
+            } else if (distanceType == "prognostic") {
+                # todo
+            } else if (distanceType == "MD") {
+                # todo
+            }
         }
+        my.weight <- 
+            ifelse(distanceType %in% c("propensity", "prognostic"), 
+            1, 2)
         pairIndices <- GetPairs(
-            Tr      = boot.sample[[tx.indicator]], 
-            X       = my.X, 
-            exact   = my.exact,
-            caliper = caliper,
-            replace = replace
+            Tr            = boot.sample[[tx.indicator]],
+            X             = my.X,
+            exact         = my.exact,
+            caliper       = caliper,
+            replace       = replace,
+            Weight        = my.weight,
+            Weight.matrix = Weight.matrix,
+            restrict      = restrict
         )
         # Tx indices are in 1st col, ctrl in 2nd col.
-        #    These indices are indices from boot.sample
-        # We are handling PS estimation/matching errors by skipping that resample.  
+        # These indices are indices from boot.sample
+
+        # We are handling PS estimation/matching errors 
+        #    by skipping that resample.  
         #    Maybe not the best way, but it rarely happens.
         if(!is.null(pairIndices)){
             est.mean.tx.tmp <- 
@@ -136,8 +195,8 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
             est.mean.ctrl.tmp <- 
                 mean(boot.sample[pairIndices[, 2], outcome])
 
-            if (!is.null(lm.formula)) {
-                fit <- lm(lm.formula, 
+            if (!is.null(outcome.formula)) {
+                fit <- lm(outcome.formula, 
                     data= boot.sample[c(pairIndices[, 1], pairIndices[, 2]), ])
                 est.TE.lm.tmp <- coef(fit)[tx.indicator]
             }
@@ -148,7 +207,8 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
             tx.orig.ids.easy.insample <- tx.sample.indices
             ctrl.orig.ids.easy.insample <-
                 ctrl.orig.ids.easy[ctrl.sample.indices]
-            all.orig.ids.easy.insample <- c(tx.orig.ids.easy.insample,
+            all.orig.ids.easy.insample <- 
+                c(tx.orig.ids.easy.insample,
                 ctrl.orig.ids.easy.insample)
             both.tbl <- table(all.orig.ids.easy.insample) 
             # count.vector.tmp is in `easy' order (all tx, then all ctrl)
@@ -156,21 +216,23 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
                 both.tbl
 
             # For calculating avg logitPS (may not be a useful quantity)
-            # logitPS vector is ordered by easy ID
-            logitPS.tmp.matrix <- cbind(logitPS, all.orig.ids.easy.insample)
-            logitPS.tmp.matrix <- logitPS.tmp.matrix[!duplicated(all.orig.ids.easy.insample), ]
-            logitPS.tmp.vec <- logitPS.tmp.matrix[, 1]
-            # this vector is in `easy' order (all tx, then all ctrl)
-            logitPS.ordered.tmp[logitPS.tmp.matrix[, 2]] <- logitPS.tmp.vec
+            if (distanceType == "propensity") {
+                # logitPS vector is ordered by easy ID
+                logitPS.tmp.matrix <- cbind(logitPS, all.orig.ids.easy.insample)
+                logitPS.tmp.matrix <- logitPS.tmp.matrix[!duplicated(all.orig.ids.easy.insample), ]
+                logitPS.tmp.vec <- logitPS.tmp.matrix[, 1]
+                # this vector is in `easy' order (all tx, then all ctrl)
+                logitPS.ordered.tmp[logitPS.tmp.matrix[, 2]] <- logitPS.tmp.vec
+            }
 
             # counts for weights
-            all.orig.ids.easy.matched <- all.orig.ids.easy.insample[c(pairIndices[, 1],
+            all.orig.ids.easy.matched <- 
+                all.orig.ids.easy.insample[c(pairIndices[, 1],
                 pairIndices[, 2])]
             both.tbl.matched <- table(all.orig.ids.easy.matched) 
             # this vector is in `easy' order (all tx, then all ctrl)
             count.vector.matched.tmp[as.numeric(names(both.tbl.matched))] <-
                 both.tbl.matched
-
         } else { # we did not get a match in this resample
             cat("Hit problem in boot", x, ".\n") 
             num.errs.tmp <- num.errs.tmp + 1
@@ -178,21 +240,16 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
 
         # return from mclapply:
         list(
-            # TODO: give these names & use names below.
             # scalars
-            est.mean.tx.tmp, #1
-            est.mean.ctrl.tmp, #2
-            est.TE.lm.tmp, #3
-
-            # vector w/ length N
-            count.vector.tmp, #4
-
-            # scalar
-            num.errs.tmp, #5
+            est.mean.tx   = est.mean.tx.tmp,
+            est.mean.ctrl = est.mean.ctrl.tmp,
+            est.TE.lm     = est.TE.lm.tmp,
+            num.errs      = num.errs.tmp,
 
             # vectors w/ length N
-            logitPS.ordered.tmp, #6
-            count.vector.matched.tmp #7
+            logitPS.ordered      = logitPS.ordered.tmp,
+            count.vector         = count.vector.tmp,
+            count.vector.matched = count.vector.matched.tmp
             )
     },
         mc.cores           = mcCores,
@@ -202,15 +259,18 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
     ) # end bootstrap resampling (mc)lapply
 
     # vectors of length n.boot
-    est.means.tx   <- do.call(c, lapply(bootStuff, function(x) x[[1]]))
-    est.means.ctrl <- do.call(c, lapply(bootStuff, function(x) x[[2]]))
+    est.means.tx   <- do.call(c, lapply(bootStuff, function(x) 
+        x[["est.mean.tx"]]))
+    est.means.ctrl <- do.call(c, lapply(bootStuff, function(x) 
+        x[["est.mean.ctrl"]]))
     est.TEs <- est.means.tx - est.means.ctrl
-    est.TEs.lm <- do.call(c, lapply(bootStuff, function(x) x[[3]]))
+    est.TEs.lm <- do.call(c, lapply(bootStuff, function(x) 
+        x[["est.TE.lm"]]))
 
     # matrix: row = resample; col = subject
     # columns are in 'easy' order
-    count.matrix <- 
-        do.call(rbind, lapply(bootStuff, function(x) x[[4]]))
+    count.matrix <- do.call(rbind, lapply(bootStuff, function(x) 
+        x[["count.vector"]]))
     count.matrix.tx <- count.matrix[, tx.orig.ids.easy]
     count.matrix.ctrl <- count.matrix[, ctrl.orig.ids.easy]
     # vector of length n, in 'easy' order
@@ -221,25 +281,24 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
     count.vector[isControl] <- count.vector.easy[ctrl.orig.ids.easy]
 
     # vector of length n.boot
-    num.errs <- do.call(c, lapply(bootStuff, function(x) x[[5]]))
+    num.errs <- do.call(c, lapply(bootStuff, function(x) 
+        x[["num.errs"]]))
 
     # matrix: row = resample; col = subject
     # columns are in 'easy' order
-    logitPS.matrix <- 
-        do.call(rbind, lapply(bootStuff, function(x) x[[6]]))
+    logitPS.matrix <- do.call(rbind, lapply(bootStuff, function(x) 
+        x[["logitPS.ordered"]]))
     logitPS.avg.easy <- colMeans(logitPS.matrix, na.rm= TRUE)
     # now get it in the order of the original dataset
     logitPS.avg <- rep(NA, N)
     logitPS.avg[isTreated] <- logitPS.avg.easy[tx.orig.ids.easy]
     logitPS.avg[isControl] <- logitPS.avg.easy[ctrl.orig.ids.easy]
-    PS.avg <- InvLogit(logitPS.avg)
     
     # matrix: row = resample; col = subject
     # columns are in 'easy' order
-    count.matrix.matched <- 
-        do.call(rbind, lapply(bootStuff, function(x) x[[7]]))
+    count.matrix.matched <- do.call(rbind, lapply(bootStuff, 
+        function(x) x[["count.vector.matched"]]))
 
-    # todo: make sure RG OK with this approach (setting to zero)
     BOOM.wts.easy <- ifelse(count.vector.easy == 0, 0,
         colSums(count.matrix.matched) / count.vector.easy)
     # now get it in the order of the original dataset
@@ -284,59 +343,56 @@ BOOM <- function(dat, n.boot, ps.formula, lm.formula= NULL,
     # TODO: return NA if no model given
     est.SE.lm.naive <- sd(est.TEs.lm, na.rm= TRUE)
 
-    # todo: add pvals. This code is from t.test, just here as reminder:
-    #pval <- 2 * pt(-abs(tstat), df)
-
-
     list(  
         # vectors of length N, in order of original dataset
         # These are all things that can be calculated w/o BOOM
-        treat= treat,
-        logitPS.orig = logitPS.orig, 
-        PS.orig = PS.orig, 
-        att.wts.orig = att.wts.orig,
-        ate.wts.orig = ate.wts.orig,
+        treat          = treat,
+        logitPS.orig   = logitPS.orig,
+        PS.orig        = PS.orig,
+        att.wts.orig   = att.wts.orig,
+        ate.wts.orig   = ate.wts.orig,
         # from Li and Greene 2013:
         match.wts.orig = match.wts.orig,
 
         # scalar results from BOOM w/ NO further covariate adj
-        est.TE= est.TE, 
-        est.SE.naive= est.SE.naive,  # not recommended for use; just for comparison
-        est.SE.efron= est.SE.efron,
-        est.SE.efron.bc= est.SE.efron.bc,
-        p.value.efron= p.value.efron,
-        p.value.efron.bc= p.value.efron.bc,
+        est.TE           = est.TE,
+        # not recommended for use; just for comparison
+        est.SE.naive     = est.SE.naive,
+        est.SE.efron     = est.SE.efron,
+        est.SE.efron.bc  = est.SE.efron.bc,
+        p.value.efron    = p.value.efron,
+        p.value.efron.bc = p.value.efron.bc,
 
         # scalar results from BOOM with further covariate adj
-        est.TE.lm= est.TE.lm, 
-        est.SE.lm.naive= est.SE.lm.naive,  # not recommended for use; just for comparison
-        est.SE.lm.efron= est.SE.lm.efron,
-        est.SE.lm.efron.bc= est.SE.lm.efron.bc,
-        p.value.lm.efron= p.value.lm.efron,
-        p.value.lm.efron.bc= p.value.lm.efron.bc,
+        est.TE.lm           = est.TE.lm,
+        # not recommended for use; just for comparison
+        est.SE.lm.naive     = est.SE.lm.naive,
+        est.SE.lm.efron     = est.SE.lm.efron,
+        est.SE.lm.efron.bc  = est.SE.lm.efron.bc,
+        p.value.lm.efron    = p.value.lm.efron,
+        p.value.lm.efron.bc = p.value.lm.efron.bc,
 
         # confidence intervals
-        conf.int.efron = GetConfInt(est.TE, est.SE.efron, conf.level),
-        conf.int.efron.bc = GetConfInt(est.TE, est.SE.efron.bc, conf.level),
-        conf.int.lm.efron = GetConfInt(est.TE.lm, est.SE.lm.efron, conf.level),
+        conf.int.efron       = GetConfInt(est.TE, est.SE.efron, conf.level),
+        conf.int.efron.bc    = GetConfInt(est.TE, est.SE.efron.bc, conf.level),
+        conf.int.lm.efron    = GetConfInt(est.TE.lm, est.SE.lm.efron, conf.level),
         conf.int.lm.efron.bc = GetConfInt(est.TE.lm, est.SE.lm.efron.bc, conf.level),
 
         # scalars
-        n.boot= n.boot,
-        tot.errs= tot.errs,
-        conf.level= conf.level,
-        avg.num.pairs= mean(num.pairs),
+        n.boot        = n.boot,
+        tot.errs      = tot.errs,
+        conf.level    = conf.level,
+        avg.num.pairs = mean(num.pairs),
 
         # vectors of length n.boot
-        est.TEs= est.TEs,
-        est.TEs.lm= est.TEs.lm,
-        num.pairs= num.pairs,
+        est.TEs    = est.TEs,
+        est.TEs.lm = est.TEs.lm,
+        num.pairs  = num.pairs,
 
         # vectors of length N, in order of original dataset
-        logitPS.avg= logitPS.avg, # may or may not be useful
-        PS.avg= PS.avg,
-        count.vector= count.vector,
-        BOOM.wts= BOOM.wts,
+        logitPS.avg  = logitPS.avg, # may or may not be useful
+        count.vector = count.vector,
+        BOOM.wts     = BOOM.wts,
 
         dat= if (return.dat) dat else NA
     )

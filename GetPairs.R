@@ -1,23 +1,26 @@
-GetPairs <- function(Tr, X, exact, caliper, replace){
+GetPairs <- function(Tr, X, exact, caliper, replace, Weight,
+    Weight.matrix, restrict){
     # Return a matrix of pairs, with tx rownums in col 1 & ctrl rownums in col 2
     # Return NULL if PS estimation fails or no matches found
 
-    # treatvec is a vector of treatment assignments (0's and 1's)
-    # TR, X, exact, caliper, and replace are as in Matching::Match
+    # all parameters are as in Matching::Match
 
     if(is.null(X[1])) return(NULL)
 
     mm <- tryCatch( 
         Match(
-            Y       = NULL,
-            Tr      = Tr,
-            X       = X,
-            replace = replace,
-            M       = 1, # the ratio
-            ties    = FALSE, # randomly break ties
-            exact   = exact,
-            caliper = caliper,
-            version = "fast"
+            Y             = NULL,
+            Tr            = Tr,
+            X             = X,
+            M             = 1, # the ratio
+            exact         = exact,
+            caliper       = caliper,
+            replace       = replace,
+            ties          = FALSE, # randomly break ties
+            Weight        = Weight,
+            Weight.matrix = Weight.matrix,
+            restrict      = restrict,
+            version       = "fast"
         ), 
         error= function(e) return(NULL)
     )
