@@ -1,15 +1,15 @@
 BOOM <- function(dat, n.boot, tx.indicator, outcome, 
-    distanceType= "propensity",
-    recalcDistance= TRUE,
+    distance.type= "propensity",
+    recalc.distance= TRUE,
     propensity.formula = NULL, 
     prognostic.formula = NULL, 
     outcome.formula= NULL, 
-    mcCores= 2, seed= 1235,
+    mc.cores= 2, seed= 1235,
     return.dat= TRUE, 
     conf.level= 0.95,
-    exactVarNames= NULL, 
+    exact.var.names= NULL, 
     caliper= 0.2, replace= FALSE,
-    Weight.matrix= NULL, restrict= NULL,
+    Weight.matrix= NULL, restrict= NULL
     ){
     # Returns a vector of various summary values from the BOOM procedure
 
@@ -17,16 +17,16 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     # n.boot: number of bootstrap resamples to use
     # tx.indicator: name of the treatment indicator variable in dat (must be 1/0 for now)
     # outcome: name of the continuous outcome variable in dat
-    # distanceType: one of "propensity" (propensity score), "prognostic" (prognostic score), or "MD" (Mahalanobis) 
-    # recalcDistance (boolean): re-calculate the PS or other distance measure in each resample?
+    # distance.type: one of "propensity" (propensity score), "prognostic" (prognostic score), or "MD" (Mahalanobis) 
+    # recalc.distance (boolean): re-calculate the PS or other distance measure in each resample?
     # propensity.formula: propensity score formula to use w/ lrm
     # prognostic.formula: prognostic score formula
     # outcome.formula: optional outcome formula. Currently must not involve interactions with the treatment indicator.
-    # mcCores: number of cores for mclapply()
+    # mc.cores: number of cores for mclapply()
     # seed: random seed for use by this function. 
     # return.dat (boolean): Return the original dataset?
     # conf.level: level to use for confidence intervals
-    # exactVarNames: vector of names of variables on which to match exactly
+    # exact.var.names: vector of names of variables on which to match exactly
     # caliper through restrict: as in Matching::Match
     
     N         <- nrow(dat) # tot number of subjects
@@ -49,8 +49,8 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
     # Argument checking
     # from t.test code: getAnywhere("t.test.default")
-    if (!missing(conf.level) && (length(conf.level) != 1 || !is.finite(conf.level) || 
-        conf.level < 0 || conf.level > 1)) 
+    if (!missing(conf.level) && (length(conf.level) != 1 || 
+        !is.finite(conf.level) || conf.level < 0 || conf.level > 1)) 
         stop("'conf.level' must be a single number between 0 and 1")
 
 
@@ -99,13 +99,13 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     all.orig.ids.easy <- 1:N
 
     # for use w/ non-recalculated distances
-    if (!recalcDistance) {
-        if (distanceType == "propensity") {
+    if (!recalc.distance) {
+        if (distance.type == "propensity") {
             logitPS.tx.orig   <- logitPS.orig[isTreated]
             logitPS.ctrl.orig <- logitPS.orig[isControl]
-        } else if (distanceType == "prognostic") {
+        } else if (distance.type == "prognostic") {
             # todo
-        } else if (distanceType == "MD") {
+        } else if (distance.type == "MD") {
             # todo
         }
     }
@@ -131,47 +131,47 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         logitPS.ordered.tmp <- rep(NA, N)
         count.vector.matched.tmp <- rep(0, N)
 
-        if (recalcDistance) {
-            if (distanceType == "propensity") {
+        if (recalc.distance) {
+            if (distance.type == "propensity") {
                 logitPS <- 
                     GetLogitPS(boot.sample, propensity.formula)
-            } else if (distanceType == "prognostic") {
+            } else if (distance.type == "prognostic") {
                 # todo
-            } else if (distanceType == "MD") {
+            } else if (distance.type == "MD") {
                 # todo
             }
         } else {
-            if (distanceType == "propensity") {
+            if (distance.type == "propensity") {
                 logitPS <- c(logitPS.tx.orig[tx.sample.indices], 
                     logitPS.ctrl.orig[ctrl.sample.indices])
-            } else if (distanceType == "prognostic") {
+            } else if (distance.type == "prognostic") {
                 # todo
-            } else if (distanceType == "MD") {
+            } else if (distance.type == "MD") {
                 # todo
             }
         }
-        if (is.null(exactVarNames)) {
+        if (is.null(exact.var.names)) {
             my.exact <- FALSE
-            if (distanceType == "propensity") {
+            if (distance.type == "propensity") {
                 my.X <- logitPS
-            } else if (distanceType == "prognostic") {
+            } else if (distance.type == "prognostic") {
                 # todo
-            } else if (distanceType == "MD") {
+            } else if (distance.type == "MD") {
                 # todo
             }
         } else { # we want to match exactly on some vars
-            if (distanceType == "propensity") {
-                my.X <- cbind(logitPS, boot.sample[, exactVarNames])
+            if (distance.type == "propensity") {
+                my.X <- cbind(logitPS, boot.sample[, exact.var.names])
                 my.exact <- 
-                    c(FALSE, rep(TRUE, length(exactVarNames)))
-            } else if (distanceType == "prognostic") {
+                    c(FALSE, rep(TRUE, length(exact.var.names)))
+            } else if (distance.type == "prognostic") {
                 # todo
-            } else if (distanceType == "MD") {
+            } else if (distance.type == "MD") {
                 # todo
             }
         }
         my.weight <- 
-            ifelse(distanceType %in% c("propensity", "prognostic"), 
+            ifelse(distance.type %in% c("propensity", "prognostic"), 
             1, 2)
         pairIndices <- GetPairs(
             Tr            = boot.sample[[tx.indicator]],
@@ -216,7 +216,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 both.tbl
 
             # For calculating avg logitPS (may not be a useful quantity)
-            if (distanceType == "propensity") {
+            if (distance.type == "propensity") {
                 # logitPS vector is ordered by easy ID
                 logitPS.tmp.matrix <- cbind(logitPS, all.orig.ids.easy.insample)
                 logitPS.tmp.matrix <- logitPS.tmp.matrix[!duplicated(all.orig.ids.easy.insample), ]
@@ -252,7 +252,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             count.vector.matched = count.vector.matched.tmp
             )
     },
-        mc.cores           = mcCores,
+        mc.cores           = mc.cores,
         mc.preschedule     = TRUE,
         mc.set.seed        = TRUE,
         mc.allow.recursive = FALSE
