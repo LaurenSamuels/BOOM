@@ -18,8 +18,6 @@ GetPairs <- function(Tr, X, exact, caliper, replace, Weight,
             replace       = replace,
             ties          = FALSE, # randomly break ties
             Weight        = Weight,
-            Weight.matrix = Weight.matrix,
-            restrict      = restrict,
             version       = "fast"
         ), 
         error= function(e) return(NULL)

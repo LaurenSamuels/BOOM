@@ -4,12 +4,12 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     propensity.formula = NULL, 
     prognostic.formula = NULL, 
     outcome.formula= NULL, 
+    MD.vars= NULL,
     mc.cores= 2, seed= 1235,
     return.dat= TRUE, 
     conf.level= 0.95,
     exact.var.names= NULL, 
-    caliper= 0.2, replace= FALSE,
-    Weight.matrix= NULL, restrict= NULL
+    caliper= 0.2, replace= FALSE
     ){
     # Returns a vector of various summary values from the BOOM procedure
 
@@ -27,7 +27,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     # return.dat (boolean): Return the original dataset?
     # conf.level: level to use for confidence intervals
     # exact.var.names: vector of names of variables on which to match exactly
-    # caliper through restrict: as in Matching::Match
+    # caliper through end of list: as in Matching::Match
     
     N         <- nrow(dat) # tot number of subjects
     treat     <- dat[[tx.indicator]]
@@ -46,8 +46,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
     # TODO: allow chr/factor tx indicator?
     # TODO: maybe return the whole call?
-    # TODO: put in some sort of checking or warning if using both
-    #       caliper and restrict (see Match documentation)
+    # TODO: for MD matching, switch to optimal nbp?
 
     # Argument checking
     # from t.test code: getAnywhere("t.test.default")
@@ -98,6 +97,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         if (is.null(progscore.orig)) print("Can't fit prognostic model on original data")
     }
     #################
+    
 
 
     # todo someday: the whole indexing/tracking thing might be easier w/ data.table
@@ -119,7 +119,8 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             progscore.tx.orig   <- progscore.orig[isTreated]
             progscore.ctrl.orig <- progscore.orig[isControl]
         } else if (distance.type == "MD") {
-            # todo
+            # todo. Doing this would involve switching to nbpmatching
+            #   for the MD matching 
         }
     }
 
@@ -152,7 +153,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 progscore <- GetPrognosticScore(dat, 
                     prognostic.formula, isControl)
             } else if (distance.type == "MD") {
-                # todo
+                # todo, if using nbpmatching rather than Match
             }
         } else {
             if (distance.type == "propensity") {
@@ -163,6 +164,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                     progscore.ctrl.orig[ctrl.sample.indices])
             } else if (distance.type == "MD") {
                 # todo
+                # todo, if using nbpmatching rather than Match
             }
         }
 
@@ -171,7 +173,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         } else if (distance.type == "prognostic") {
             my.X <- progscore
         } else if (distance.type == "MD") {
-            # todo
+            my.X <- boot.sample[, MD.vars]
         }
 
         if (is.null(exact.var.names)) {
@@ -182,7 +184,8 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 my.exact <- 
                     c(FALSE, rep(TRUE, length(exact.var.names)))
             } else if (distance.type == "MD") {
-                # todo
+                my.exact <- vector(FALSE, length(MD.vars))
+                my.exact[MD.vars %in% exact.var.names] <- TRUE
             }
         }
         my.weight <- 
@@ -194,9 +197,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             exact         = my.exact,
             caliper       = caliper,
             replace       = replace,
-            Weight        = my.weight,
-            Weight.matrix = Weight.matrix,
-            restrict      = restrict
+            Weight        = my.weight
         )
         # Tx indices are in 1st col, ctrl in 2nd col.
         # These indices are indices from boot.sample
