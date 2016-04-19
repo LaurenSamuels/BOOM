@@ -46,6 +46,8 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
     # TODO: allow chr/factor tx indicator?
     # TODO: maybe return the whole call?
+    # TODO: put in some sort of checking or warning if using both
+    #       caliper and restrict (see Match documentation)
 
     # Argument checking
     # from t.test code: getAnywhere("t.test.default")
@@ -104,7 +106,10 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             logitPS.tx.orig   <- logitPS.orig[isTreated]
             logitPS.ctrl.orig <- logitPS.orig[isControl]
         } else if (distance.type == "prognostic") {
-            # todo
+            progscore.orig <- GetPrognosticScore(dat, 
+                prognostic.formula, isControl)
+            progscore.tx.orig   <- progscore.orig[isTreated]
+            progscore.ctrl.orig <- progscore.orig[isControl]
         } else if (distance.type == "MD") {
             # todo
         }
@@ -136,7 +141,8 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 logitPS <- 
                     GetLogitPS(boot.sample, propensity.formula)
             } else if (distance.type == "prognostic") {
-                # todo
+                progscore <- GetPrognosticScore(dat, 
+                    prognostic.formula, isControl)
             } else if (distance.type == "MD") {
                 # todo
             }
@@ -145,27 +151,28 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 logitPS <- c(logitPS.tx.orig[tx.sample.indices], 
                     logitPS.ctrl.orig[ctrl.sample.indices])
             } else if (distance.type == "prognostic") {
-                # todo
+                progscore <- c(progscore.tx.orig[tx.sample.indices], 
+                    progscore.ctrl.orig[ctrl.sample.indices])
             } else if (distance.type == "MD") {
                 # todo
             }
         }
+
+        if (distance.type == "propensity") {
+            my.X <- logitPS
+        } else if (distance.type == "prognostic") {
+            my.X <- progscore
+        } else if (distance.type == "MD") {
+            # todo
+        }
+
         if (is.null(exact.var.names)) {
             my.exact <- FALSE
-            if (distance.type == "propensity") {
-                my.X <- logitPS
-            } else if (distance.type == "prognostic") {
-                # todo
-            } else if (distance.type == "MD") {
-                # todo
-            }
         } else { # we want to match exactly on some vars
-            if (distance.type == "propensity") {
-                my.X <- cbind(logitPS, boot.sample[, exact.var.names])
+            if (distance.type %in% c("propensity", "prognostic")) {
+                my.X <- cbind(my.X, boot.sample[, exact.var.names])
                 my.exact <- 
                     c(FALSE, rep(TRUE, length(exact.var.names)))
-            } else if (distance.type == "prognostic") {
-                # todo
             } else if (distance.type == "MD") {
                 # todo
             }
