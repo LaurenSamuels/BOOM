@@ -73,12 +73,13 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     # first: get some estimates on original data
     logitPS.orig <- PS.orig <- att.wts.orig <- ate.wts.orig <-
         match.wts.orig <- NA
+    progscore.orig <- NA
 
     # people might provide a propensity score formula even if
     #    they are not using it for BOOM distance measure
     if (!is.null(propensity.formula)) {
         logitPS.orig <- GetLogitPS(dat, propensity.formula)
-        # todo: make this nicer. turn into stopifnot.
+        # todo: make this nicer. 
         if (is.null(logitPS.orig)) print("Can't fit PS model on original data")
         PS.orig <- InvLogit(logitPS.orig)
         att.wts.orig <- treat + (1 - treat) * PS.orig / (1 - PS.orig)
@@ -86,6 +87,15 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         # from Li and Greene 2013:
         match.wts.orig = pmin(1 - PS.orig, PS.orig) / 
             (treat * PS.orig + (1 - treat) * (1 - PS.orig))
+    }
+    #################
+    # and they might provide a prognostic score formula even if
+    #    they are not using it for BOOM distance measure
+    if (!is.null(prognostic.formula)) {
+        progscore.orig <- GetPrognosticScore(dat, 
+            prognostic.formula, isControl)
+        # todo: make this nicer. 
+        if (is.null(progscore.orig)) print("Can't fit prognostic model on original data")
     }
     #################
 
@@ -106,8 +116,6 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             logitPS.tx.orig   <- logitPS.orig[isTreated]
             logitPS.ctrl.orig <- logitPS.orig[isControl]
         } else if (distance.type == "prognostic") {
-            progscore.orig <- GetPrognosticScore(dat, 
-                prognostic.formula, isControl)
             progscore.tx.orig   <- progscore.orig[isTreated]
             progscore.ctrl.orig <- progscore.orig[isControl]
         } else if (distance.type == "MD") {
@@ -360,6 +368,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         ate.wts.orig   = ate.wts.orig,
         # from Li and Greene 2013:
         match.wts.orig = match.wts.orig,
+        progscore.orig = progscore.orig,
 
         # scalar results from BOOM w/ NO further covariate adj
         est.TE           = est.TE,
