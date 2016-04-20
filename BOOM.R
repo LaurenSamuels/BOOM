@@ -205,13 +205,15 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         # We are handling PS estimation/matching errors 
         #    by skipping that resample.  
         #    Maybe not the best way, but it rarely happens.
-        if(!is.null(pairIndices)){
+        if(!is.null(pairIndices)){ # TODO: maybe set a min # of matches to proceed?
+            #print(nrow(pairIndices)) # TODO: this is useful for setting caliper; maybe find a way to officially incorporate?
             est.mean.tx.tmp <- 
                 mean(boot.sample[pairIndices[, 1], outcome])
             est.mean.ctrl.tmp <- 
                 mean(boot.sample[pairIndices[, 2], outcome])
 
             if (!is.null(outcome.formula)) {
+                # TODO: error handling here. See http://stackoverflow.com/questions/18171246/error-in-contrasts-when-defining-a-linear-model-in-r
                 fit <- lm(outcome.formula, 
                     data= boot.sample[c(pairIndices[, 1], pairIndices[, 2]), ])
                 est.TE.lm.tmp <- coef(fit)[tx.indicator]
