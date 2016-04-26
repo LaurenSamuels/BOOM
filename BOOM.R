@@ -45,7 +45,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     # TODO: error handling: illegal distance type
 
     # TODO: allow chr/factor tx indicator?
-    # TODO: maybe return the whole call?
+    # TODO: return the whole call (all args used in call)
     # TODO: for MD matching, switch to optimal nbp?
 
     # Argument checking
