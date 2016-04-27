@@ -217,22 +217,28 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 mean(boot.sample[pairIndices[, 1], outcome])
             est.mean.ctrl.tmp <- 
                 mean(boot.sample[pairIndices[, 2], outcome])
+            matched.indices <- c(pairIndices[, 1], pairIndices[, 2])
 
             if (!is.null(outcome.formula)) {
-                # TODO: error handling here. See http://stackoverflow.com/questions/18171246/error-in-contrasts-when-defining-a-linear-model-in-r
                 # modify outcome.formula as necessary to remove factors with only one level
+                # See http://stackoverflow.com/questions/18171246/error-in-contrasts-when-defining-a-linear-model-in-r
+                # TODO: could make this faster by just indexing 1x
                 lm.vars.to.remove <- out.form.factor.vars[sapply(out.form.factor.vars, 
-                    function(x) length(levels(x)) == 1)]
-                term.positions <- match(lm.vars.to.remove,
-                    attr(out.form.terms, "term.labels"))
-                tmpterms <- drop.terms(out.form.terms,
-                    dropx= term.positions)         
-                out.form.inboot <- 
-                    reformulate(attr(tmpterms, "term.labels"), 
-                    response= out.form.response )
+                    function(x) length(levels(boot.sample[matched.indices, x])) == 1)]
+                if (length(lm.vars.to.remove) >= 1) {
+                    term.positions <- match(lm.vars.to.remove,
+                        attr(out.form.terms, "term.labels"))
+                    tmpterms <- drop.terms(out.form.terms,
+                        dropx= term.positions)         
+                    out.form.inboot <- 
+                        reformulate(attr(tmpterms, "term.labels"), 
+                        response= out.form.response )
+                } else {
+                    out.form.inboot <- outcome.formula
+                }
 
                 fit <- lm(out.form.inboot, 
-                    data= boot.sample[c(pairIndices[, 1], pairIndices[, 2]), ])
+                    data= boot.sample[matched.indices, ])
                 est.TE.lm.tmp <- coef(fit)[tx.indicator]
             }
 
