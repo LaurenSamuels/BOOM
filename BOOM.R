@@ -103,7 +103,6 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     out.form.terms <- terms(outcome.formula)
     out.form.response <- all.vars(outcome.formula[[2]])
     out.form.othervars <- all.vars(outcome.formula[[3]])
-    out.form.factor.vars <- out.form.othervars[sapply(out.form.othervars, function(x) is.factor(dat[[x]]))]
 
 
     # todo someday: the whole indexing/tracking thing might be easier w/ data.table
@@ -223,8 +222,9 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 # modify outcome.formula as necessary to remove factors with only one level
                 # See http://stackoverflow.com/questions/18171246/error-in-contrasts-when-defining-a-linear-model-in-r
                 # TODO: could make this faster by just indexing 1x
-                lm.vars.to.remove <- out.form.factor.vars[sapply(out.form.factor.vars, 
-                    function(x) length(levels(boot.sample[matched.indices, x])) == 1)]
+                lm.vars.to.remove <- 
+                    out.form.othervars[sapply(out.form.othervars, 
+                    function(x) length(unique(boot.sample[matched.indices, x])) == 1)]
                 if (length(lm.vars.to.remove) >= 1) {
                     term.positions <- match(lm.vars.to.remove,
                         attr(out.form.terms, "term.labels"))
