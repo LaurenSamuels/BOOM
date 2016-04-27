@@ -98,6 +98,12 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     }
     #################
     
+    # Preparation for fitting lm inside boot: in case some factors
+    #    have only one level
+    out.form.terms <- terms(outcome.formula)
+    out.form.response <- all.vars(outcome.formula[[2]])
+    out.form.othervars <- all.vars(outcome.formula[[3]])
+    out.form.factor.vars <- out.form.othervars[sapply(out.form.othervars, function(x) is.factor(dat[[x]]))]
 
 
     # todo someday: the whole indexing/tracking thing might be easier w/ data.table
@@ -214,7 +220,18 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
             if (!is.null(outcome.formula)) {
                 # TODO: error handling here. See http://stackoverflow.com/questions/18171246/error-in-contrasts-when-defining-a-linear-model-in-r
-                fit <- lm(outcome.formula, 
+                # modify outcome.formula as necessary to remove factors with only one level
+                lm.vars.to.remove <- out.form.factor.vars[sapply(out.form.factor.vars, 
+                    function(x) length(levels(x)) == 1)]
+                term.positions <- match(lm.vars.to.remove,
+                    attr(out.form.terms, "term.labels"))
+                tmpterms <- drop.terms(out.form.terms,
+                    dropx= term.positions)         
+                out.form.inboot <- 
+                    reformulate(attr(tmpterms, "term.labels"), 
+                    response= out.form.response )
+
+                fit <- lm(out.form.inboot, 
                     data= boot.sample[c(pairIndices[, 1], pairIndices[, 2]), ])
                 est.TE.lm.tmp <- coef(fit)[tx.indicator]
             }
