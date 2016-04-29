@@ -131,7 +131,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     }
 
     # This does not vary from boot to boot (because of the way sample is generated)
-    isControl.boot <- c(rep(FALSE, n.treated.orig), rep(TRUE, n.control.orig))
+    isControl.boot <- c(rep(FALSE, n.treated.orig), rep(TRUE, n.ctrl.orig))
 
     bootStuff <- mclapply(1:n.boot, function(x) {
         # Modified from Austin & Small (2014) --- they did not condition on
