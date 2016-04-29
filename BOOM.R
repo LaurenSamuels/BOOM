@@ -210,7 +210,6 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 } else {
                     prog.form.inboot <- prognostic.formula
                 }
-                print(prog.form.inboot)
                 progscore <- GetPrognosticScore(boot.sample, 
                     prog.form.inboot, isControl.boot)
             } else if (distance.type == "MD") {
