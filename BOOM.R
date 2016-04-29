@@ -107,10 +107,11 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
     # todo someday: the whole indexing/tracking thing might be easier w/ data.table
     tx.orig.dat <- dat[isTreated, ]
-    n.treated.orig <- nrow(tx.orig.dat)
+    n.treated.orig <- sum(isTreated)
     tx.orig.ids.easy <- 1:n.treated.orig
 
     ctrl.orig.dat <- dat[isControl, ]
+    n.ctrl.orig <- N - n.treated.orig
     ctrl.orig.ids.easy <- (n.treated.orig + 1) : N
 
     all.orig.ids.easy <- 1:N
@@ -129,6 +130,9 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         }
     }
 
+    # This does not vary from boot to boot (because of the way sample is generated)
+    isControl.boot <- c(rep(FALSE, n.treated.orig), rep(TRUE, n.control.orig))
+
     bootStuff <- mclapply(1:n.boot, function(x) {
         # Modified from Austin & Small (2014) --- they did not condition on
         # observed tx & ctrl group sizes
@@ -137,7 +141,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         tx.sample <- tx.orig.dat[tx.sample.indices, ]
 
         ctrl.sample.indices <- 
-            sample(1:nrow(ctrl.orig.dat), size= nrow(ctrl.orig.dat), replace= TRUE)
+            sample(1:n.ctrl.orig, size= n.ctrl.orig, replace= TRUE)
         ctrl.sample <- ctrl.orig.dat[ctrl.sample.indices, ]
 
         # in boot.sample, the first n.treated.orig rows are treated people,
@@ -155,12 +159,12 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 logitPS <- 
                     GetLogitPS(boot.sample, propensity.formula)
             } else if (distance.type == "prognostic") {
-                progscore <- GetPrognosticScore(dat, 
-                    prognostic.formula, isControl)
+                progscore <- GetPrognosticScore(boot.sample, 
+                    prognostic.formula, isControl.boot)
             } else if (distance.type == "MD") {
                 # todo, if using nbpmatching rather than Match
             }
-        } else {
+        } else { # using a fixed distance
             if (distance.type == "propensity") {
                 logitPS <- c(logitPS.tx.orig[tx.sample.indices], 
                     logitPS.ctrl.orig[ctrl.sample.indices])
