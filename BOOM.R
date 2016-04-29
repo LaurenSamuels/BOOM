@@ -20,7 +20,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     # distance.type: one of "propensity" (propensity score), "prognostic" (prognostic score), or "MD" (Mahalanobis) 
     # recalc.distance (boolean): re-calculate the PS or other distance measure in each resample?
     # propensity.formula: propensity score formula to use w/ lrm
-    # prognostic.formula: prognostic score formula
+    # prognostic.formula: prognostic score formula. Must not contain factor variables.
     # outcome.formula: optional outcome formula. Currently must not involve interactions with the treatment indicator.
     # mc.cores: number of cores for mclapply()
     # seed: random seed for use by this function. 
@@ -43,6 +43,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     #***************
     # TODO: error handling: exactvars not in dset
     # TODO: error handling: illegal distance type
+    # TODO: error handling: factor vars in prognostic.formula
 
     # TODO: allow chr/factor tx indicator?
     # TODO: return the whole call (all args used in call)
@@ -91,6 +92,14 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     # and they might provide a prognostic score formula even if
     #    they are not using it for BOOM distance measure
     if (!is.null(prognostic.formula)) {
+        
+        # Preparation for fitting inside boot: in case some factors
+        #    have only one level
+        prog.form.terms <- terms(prognostic.formula)
+        prog.form.response <- all.vars(prognostic.formula[[2]])
+        prog.form.othervars <- all.vars(prognostic.formula[[3]])
+
+
         progscore.orig <- GetPrognosticScore(dat, 
             prognostic.formula, isControl)
         # todo: make this nicer. 
@@ -159,8 +168,51 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 logitPS <- 
                     GetLogitPS(boot.sample, propensity.formula)
             } else if (distance.type == "prognostic") {
+                # the original prognostic formula might not work in this sample
+                # TODO: shld probably do something like this for PS.
+                # TODO: keep record of this/ report back
+                prog.matrix <- model.matrix(prognostic.formula, data= ctrl.sample)
+                prog.rank <- rankMatrix(prog.matrix)
+                prog.terms.to.remove <- NA
+                prog.estimate.anyway <- FALSE
+                while ((prog.rank < ncol(prog.matrix)) | prog.estimate.anyway) {
+                    #http://stats.stackexchange.com/questions/16327/testing-for-linear-dependence-among-the-columns-of-a-matrix
+                    
+                    rank.if.removed <- 
+                        sapply(1:ncol(prog.matrix), function (x) 
+                            rankMatrix(prog.matrix[, -x])
+                        )
+                    max.rank.if.removed <- max(rank.if.removed)
+                    if (all(rank.if.removed == max.rank.if.removed)) {
+                        prog.estimate.anyway <- TRUE
+                        # TODO: handle this better
+                        warning("Problem with prognostic score formula")
+                    }
+                    prog.problem.indices <- 
+                        which(rank.if.removed == max.rank.if.removed)
+                    prog.terms.to.remove <- c(prog.terms.to.remove, 
+                        setdiff(colnames(prog.matrix)[prog.problem.indices], 
+                        "(Intercept)")[1])
+                    prog.matrix <- 
+                        prog.matrix[, !(colnames(prog.matrix) %in% prog.terms.to.remove)]
+                    prog.rank <- rankMatrix(prog.matrix)
+                }
+                prog.terms.to.remove <- na.omit(prog.terms.to.remove)
+                if (length(prog.terms.to.remove) >= 1) {
+                    # some of this might be redundant. but I'm worried about (Intercept)
+                    prog.term.positions.to.remove <- match(prog.terms.to.remove,
+                        attr(prog.form.terms, "term.labels"))
+                    prog.tmpterms <- drop.terms(prog.form.terms,
+                        dropx= prog.term.positions.to.remove)         
+                    prog.form.inboot <- 
+                        reformulate(attr(prog.tmpterms, "term.labels"), 
+                        response= prog.form.response )
+                } else {
+                    prog.form.inboot <- prognostic.formula
+                }
+                print(prog.form.inboot)
                 progscore <- GetPrognosticScore(boot.sample, 
-                    prognostic.formula, isControl.boot)
+                    prog.form.inboot, isControl.boot)
             } else if (distance.type == "MD") {
                 # todo, if using nbpmatching rather than Match
             }
@@ -225,15 +277,18 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             if (!is.null(outcome.formula)) {
                 # modify outcome.formula as necessary to remove factors with only one level
                 # See http://stackoverflow.com/questions/18171246/error-in-contrasts-when-defining-a-linear-model-in-r
-                # TODO: could make this faster by just indexing 1x
                 lm.vars.to.remove <- 
                     out.form.othervars[sapply(out.form.othervars, 
                     function(x) length(unique(boot.sample[matched.indices, x])) == 1)]
                 if (length(lm.vars.to.remove) >= 1) {
-                    term.positions <- match(lm.vars.to.remove,
+                    # TODO: this assumes that the term names are the same as the variable
+                    #     names. This is probably a safe assumption for variables w/
+                    #     only a few categories, but it won't cover interactions, etc.
+                    # Could do processing for rank after this (see prognostic scores)
+                    term.positions.to.remove <- match(lm.vars.to.remove,
                         attr(out.form.terms, "term.labels"))
                     tmpterms <- drop.terms(out.form.terms,
-                        dropx= term.positions)         
+                        dropx= term.positions.to.remove)         
                     out.form.inboot <- 
                         reformulate(attr(tmpterms, "term.labels"), 
                         response= out.form.response )
