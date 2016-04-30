@@ -165,51 +165,18 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
         if (recalc.distance) {
             if (distance.type == "propensity") {
-                logitPS <- 
-                    GetLogitPS(boot.sample, propensity.formula)
-            } else if (distance.type == "prognostic") {
-                # the original prognostic formula might not work in this sample
-                # TODO: shld probably do something like this for PS.
+                # the original propensity formula might not work in this sample
                 # TODO: keep record of this/ report back
-                prog.matrix <- model.matrix(prognostic.formula, data= ctrl.sample)
-                prog.rank <- rankMatrix(prog.matrix)
-                prog.terms.to.remove <- NA
-                prog.estimate.anyway <- FALSE
-                while ((prog.rank < ncol(prog.matrix)) | prog.estimate.anyway) {
-                    #http://stats.stackexchange.com/questions/16327/testing-for-linear-dependence-among-the-columns-of-a-matrix
-                    
-                    rank.if.removed <- 
-                        sapply(1:ncol(prog.matrix), function (x) 
-                            rankMatrix(prog.matrix[, -x])
-                        )
-                    max.rank.if.removed <- max(rank.if.removed)
-                    if (all(rank.if.removed == max.rank.if.removed)) {
-                        prog.estimate.anyway <- TRUE
-                        # TODO: handle this better
-                        warning("Problem with prognostic score formula")
-                    }
-                    prog.problem.indices <- 
-                        which(rank.if.removed == max.rank.if.removed)
-                    prog.terms.to.remove <- c(prog.terms.to.remove, 
-                        setdiff(colnames(prog.matrix)[prog.problem.indices], 
-                        "(Intercept)")[1])
-                    prog.matrix <- 
-                        prog.matrix[, !(colnames(prog.matrix) %in% prog.terms.to.remove)]
-                    prog.rank <- rankMatrix(prog.matrix)
-                }
-                prog.terms.to.remove <- na.omit(prog.terms.to.remove)
-                if (length(prog.terms.to.remove) >= 1) {
-                    # some of this might be redundant. but I'm worried about (Intercept)
-                    prog.term.positions.to.remove <- match(prog.terms.to.remove,
-                        attr(prog.form.terms, "term.labels"))
-                    prog.tmpterms <- drop.terms(prog.form.terms,
-                        dropx= prog.term.positions.to.remove)         
-                    prog.form.inboot <- 
-                        reformulate(attr(prog.tmpterms, "term.labels"), 
-                        response= prog.form.response )
-                } else {
-                    prog.form.inboot <- prognostic.formula
-                }
+                ps.form.inboot <- 
+                    CheckAndFixFormula(boot.sample, propensity.formula)
+                logitPS <- 
+                    GetLogitPS(boot.sample, ps.form.inboot)
+            } else if (distance.type == "prognostic") {
+                # the original prognostic formula might not work in this ctrl sample.
+                #   (If it works in ctrl sample, it will work in whole boot.sample)
+                prog.form.inboot <- 
+                    CheckAndFixFormula(ctrl.sample, prognostic.formula)
+
                 progscore <- GetPrognosticScore(boot.sample, 
                     prog.form.inboot, isControl.boot)
             } else if (distance.type == "MD") {
@@ -274,27 +241,8 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             matched.indices <- c(pairIndices[, 1], pairIndices[, 2])
 
             if (!is.null(outcome.formula)) {
-                # modify outcome.formula as necessary to remove factors with only one level
-                # See http://stackoverflow.com/questions/18171246/error-in-contrasts-when-defining-a-linear-model-in-r
-                lm.vars.to.remove <- 
-                    out.form.othervars[sapply(out.form.othervars, 
-                    function(x) length(unique(boot.sample[matched.indices, x])) == 1)]
-                if (length(lm.vars.to.remove) >= 1) {
-                    # TODO: this assumes that the term names are the same as the variable
-                    #     names. This is probably a safe assumption for variables w/
-                    #     only a few categories, but it won't cover interactions, etc.
-                    # Could do processing for rank after this (see prognostic scores)
-                    term.positions.to.remove <- match(lm.vars.to.remove,
-                        attr(out.form.terms, "term.labels"))
-                    tmpterms <- drop.terms(out.form.terms,
-                        dropx= term.positions.to.remove)         
-                    out.form.inboot <- 
-                        reformulate(attr(tmpterms, "term.labels"), 
-                        response= out.form.response )
-                } else {
-                    out.form.inboot <- outcome.formula
-                }
-
+                out.form.inboot <- 
+                    CheckAndFixFormula(boot.sample[matched.indices, ], outcome.formula)
                 fit <- lm(out.form.inboot, 
                     data= boot.sample[matched.indices, ])
                 est.TE.lm.tmp <- coef(fit)[tx.indicator]
