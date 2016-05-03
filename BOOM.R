@@ -55,6 +55,9 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     # TODO: error handling: can't have recalc.distance= FALSE & matching.pkg= "Matching"
     #        with distance.type = "MD"
     # TODO: message about not using both threshold and caliper
+    # TODO: require n.boot >= 2 OR put in processing for n.boot= 1
+    # TODO: am still getting "singular information matrix in lrm.fit (rank= 24 ).  Offending variable(s):" on occasion. CheckAndFix is not taking care of all collinearity, just collinearity w/ the intercept. Keep adding to the function.
+
 
     # Argument checking
     # from t.test code: getAnywhere("t.test.default")
@@ -132,6 +135,10 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
     all.orig.ids.easy <- 1:N
 
+    # These will stay the same from boot to boot (because of the way sample is generated)
+    isTreated.boot <- c(rep(TRUE, n.treated.orig), rep(FALSE, n.ctrl.orig))
+    isControl.boot <- !isTreated.boot
+
     # for use w/ non-recalculated distances
     if (!recalc.distance) {
         if (distance.type == "propensity") {
@@ -141,13 +148,15 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             progscore.tx.orig   <- progscore.orig[isTreated]
             progscore.ctrl.orig <- progscore.orig[isControl]
         } else if (distance.type == "MD" & matching.pkg == "nbpMatching") {
-            # todo. 
+            # reorder the dataset
+            datForDist <- rbind(tx.orig.dat, ctrl.orig.dat)
+            distmat.tx.ctrl.orig <- as.matrix(gendistance(cbind(isTreated.boot, 
+                datForDist[, MD.vars]), prevent = 1)$dist)
+            # get rid of phantoms
+            distmat.tx.ctrl.orig <- distmat.tx.ctrl.orig[1:N, 1:N]
         }
     }
 
-    # This does not vary from boot to boot (because of the way sample is generated)
-    isTreated.boot <- c(rep(TRUE, n.treated.orig), rep(FALSE, n.ctrl.orig))
-    isControl.boot <- !isTreated.boot
 
     bootStuff <- mclapply(1:n.boot, function(x) {
         # Modified from Austin & Small (2014) --- they did not condition on
@@ -160,6 +169,18 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             sample(1:n.ctrl.orig, size= n.ctrl.orig, replace= TRUE)
         ctrl.sample <- ctrl.orig.dat[ctrl.sample.indices, ]
 
+        
+        # Which of the original "easy id's" are in the boot sample?
+        # The "easy id's" come from the rearranged dataset with all tx first,
+        #   then all control
+        tx.orig.ids.easy.insample <- tx.sample.indices
+        ctrl.orig.ids.easy.insample <-
+            ctrl.orig.ids.easy[ctrl.sample.indices]
+        all.orig.ids.easy.insample <- 
+            c(tx.orig.ids.easy.insample,
+            ctrl.orig.ids.easy.insample)
+
+
         # in boot.sample, the first n.treated.orig rows are treated people,
         #   remaining rows are control people
         boot.sample <- rbind(tx.sample, ctrl.sample, make.row.names= FALSE)
@@ -169,10 +190,11 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         num.match.errs.tmp <- 0
         num.times.ps.form.changed.tmp <- NA
         num.times.prog.form.changed.tmp <- NA
-        num.times.outcome.form.changed.tmp <- NA
+        num.times.out.form.changed.tmp <- NA
         
         logitPS.ordered.tmp <- rep(NA, N)
         count.vector.matched.tmp <- rep(0, N)
+
 
         if (recalc.distance) {
             if (distance.type == "propensity") {
@@ -190,8 +212,10 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
                 progscore <- GetPrognosticScore(boot.sample, 
                     prog.check$form, isControl.boot)
-            } else if (distance.type == "MD") {
-                # todo, if using nbpmatching rather than Match
+            } else if (distance.type == "MD" & matching.pkg == "nbpMatching") {
+                distmat <- distancematrix(gendistance(
+                    cbind(isTreated.boot, boot.sample[, MD.vars]), 
+                    prevent = 1))
             }
         } else { # using a fixed distance
             if (distance.type == "propensity") {
@@ -200,9 +224,9 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             } else if (distance.type == "prognostic") {
                 progscore <- c(progscore.tx.orig[tx.sample.indices], 
                     progscore.ctrl.orig[ctrl.sample.indices])
-            } else if (distance.type == "MD") {
-                # todo
-                # todo, if using nbpmatching rather than Match
+            } else if (distance.type == "MD" & matching.pkg == "nbpMatching") {
+                distmat <- distmat.tx.ctrl.orig[all.orig.ids.easy.insample,
+                    all.orig.ids.easy.insample]
             }
         }
 
@@ -210,7 +234,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             my.X <- logitPS
         } else if (distance.type == "prognostic") {
             my.X <- progscore
-        } else if (distance.type == "MD") {
+        } else if (distance.type == "MD" & matching.pkg == "Matching") {
             my.X <- boot.sample[, MD.vars]
         }
 
@@ -242,8 +266,6 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         # Tx indices are in 1st col, ctrl in 2nd col.
         # These indices are indices from boot.sample
         } else if (matching.pkg == "nbpMatching") {
-            my.X <- cbind(isTreated.boot, my.X)
-            distmat <- distancematrix(gendistance(my.X, prevent = 1))
             matchinfo <- nonbimatch(distmat, threshold= threshold)$matches[1:N, ]
             # get the boot.sample indices of all units that have a legit match
             toKeep <- matchinfo[with(matchinfo, Group2.Row <= N &
@@ -276,12 +298,6 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             # fill in counts for Efron calculations
             #   (unrelated to matching, but we do not want to do if
             #    matching was unsuccessful)
-            tx.orig.ids.easy.insample <- tx.sample.indices
-            ctrl.orig.ids.easy.insample <-
-                ctrl.orig.ids.easy[ctrl.sample.indices]
-            all.orig.ids.easy.insample <- 
-                c(tx.orig.ids.easy.insample,
-                ctrl.orig.ids.easy.insample)
             both.tbl <- table(all.orig.ids.easy.insample) 
             # count.vector.tmp is in `easy' order (all tx, then all ctrl)
             count.vector.tmp[as.numeric(names(both.tbl))] <-
