@@ -13,7 +13,7 @@ CheckAndFixFormula <- function(dat, form) {
     if((sum.gt1.unique == n.terms) | 
         ((sum.gt1.unique == n.terms - 1) & "(Intercept)" %in% 
             colnames(mod.matrix))){
-        return(form)
+        return(list(form= form, removedTermFlag= 0))
     } else {
         # The reformulated model will automatically have an intercept,
         # so even if the original model had no intercept and there's
@@ -24,7 +24,9 @@ CheckAndFixFormula <- function(dat, form) {
             attr(form.terms, "term.labels"))
         tmpterms <- drop.terms(form.terms,
             dropx= term.positions.to.remove)         
-        reformulate(attr(tmpterms, "term.labels"), 
-            response= form.response)
+        list(form= reformulate(attr(tmpterms, "term.labels"), 
+                response= form.response),
+            removedTermFlag= 1
+        )
     }
 }

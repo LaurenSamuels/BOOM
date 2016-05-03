@@ -79,7 +79,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     #    they are not using it for BOOM distance measure
     if (!is.null(propensity.formula)) {
         logitPS.orig <- GetLogitPS(dat, propensity.formula)
-        # todo: make this nicer. 
+        # TODO: make this nicer/proper error handling 
         if (is.null(logitPS.orig)) print("Can't fit PS model on original data")
         PS.orig <- InvLogit(logitPS.orig)
         att.wts.orig <- treat + (1 - treat) * PS.orig / (1 - PS.orig)
@@ -102,7 +102,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
         progscore.orig <- GetPrognosticScore(dat, 
             prognostic.formula, isControl)
-        # todo: make this nicer. 
+        # TODO: make this nicer/proper error handling 
         if (is.null(progscore.orig)) print("Can't fit prognostic model on original data")
     }
     #################
@@ -159,26 +159,30 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
         est.mean.tx.tmp <- est.mean.ctrl.tmp <- est.TE.lm.tmp <- NA
         count.vector.tmp <- rep(0, N)
-        num.errs.tmp <- 0
+        num.match.errs.tmp <- 0
+        num.times.ps.form.changed.tmp <- NA
+        num.times.prog.form.changed.tmp <- NA
+        num.times.outcome.form.changed.tmp <- NA
+        
         logitPS.ordered.tmp <- rep(NA, N)
         count.vector.matched.tmp <- rep(0, N)
 
         if (recalc.distance) {
             if (distance.type == "propensity") {
                 # the original propensity formula might not work in this sample
-                # TODO: keep record of this/ report back
-                ps.form.inboot <- 
-                    CheckAndFixFormula(boot.sample, propensity.formula)
+                # TODO: maybe: instead of flag, save list of terms removed??
+                ps.check <- CheckAndFixFormula(boot.sample, propensity.formula)
+                num.times.ps.form.changed.tmp <- ps.check$removedTermFlag
                 logitPS <- 
-                    GetLogitPS(boot.sample, ps.form.inboot)
+                    GetLogitPS(boot.sample, ps.check$form)
             } else if (distance.type == "prognostic") {
                 # the original prognostic formula might not work in this ctrl sample.
                 #   (If it works in ctrl sample, it will work in whole boot.sample)
-                prog.form.inboot <- 
-                    CheckAndFixFormula(ctrl.sample, prognostic.formula)
+                prog.check <- CheckAndFixFormula(ctrl.sample, prognostic.formula)
+                num.times.prog.form.changed.tmp <- prog.check$removedTermFlag
 
                 progscore <- GetPrognosticScore(boot.sample, 
-                    prog.form.inboot, isControl.boot)
+                    prog.check$form, isControl.boot)
             } else if (distance.type == "MD") {
                 # todo, if using nbpmatching rather than Match
             }
@@ -233,7 +237,6 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         #    by skipping that resample.  
         #    Maybe not the best way, but it rarely happens.
         if(!is.null(pairIndices)){ # TODO: maybe set a min # of matches to proceed?
-            #print(nrow(pairIndices)) # TODO: this is useful for setting caliper; maybe find a way to officially incorporate?
             est.mean.tx.tmp <- 
                 mean(boot.sample[pairIndices[, 1], outcome])
             est.mean.ctrl.tmp <- 
@@ -241,9 +244,10 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             matched.indices <- c(pairIndices[, 1], pairIndices[, 2])
 
             if (!is.null(outcome.formula)) {
-                out.form.inboot <- 
+                out.check <- 
                     CheckAndFixFormula(boot.sample[matched.indices, ], outcome.formula)
-                fit <- lm(out.form.inboot, 
+                num.times.out.form.changed.tmp <- out.check$removedTermFlag
+                fit <- lm(out.check$form, 
                     data= boot.sample[matched.indices, ])
                 est.TE.lm.tmp <- coef(fit)[tx.indicator]
             }
@@ -282,7 +286,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 both.tbl.matched
         } else { # we did not get a match in this resample
             cat("Hit problem in boot", x, ".\n") 
-            num.errs.tmp <- num.errs.tmp + 1
+            num.match.errs.tmp <- 1
         } # end processing for resamples with errors in PS estimation or matching
 
         # return from mclapply:
@@ -291,7 +295,11 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             est.mean.tx   = est.mean.tx.tmp,
             est.mean.ctrl = est.mean.ctrl.tmp,
             est.TE.lm     = est.TE.lm.tmp,
-            num.errs      = num.errs.tmp,
+            # TODO: these are all called "num," but really they're 0/1 flags
+            num.match.errs              = num.match.errs.tmp,
+            num.times.ps.form.changed   = num.times.ps.form.changed.tmp, 
+            num.times.prog.form.changed = num.times.prog.form.changed.tmp, 
+            num.times.out.form.changed  = num.times.out.form.changed.tmp, 
 
             # vectors w/ length N
             logitPS.ordered      = logitPS.ordered.tmp,
@@ -327,9 +335,15 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     count.vector[isTreated] <- count.vector.easy[tx.orig.ids.easy]
     count.vector[isControl] <- count.vector.easy[ctrl.orig.ids.easy]
 
-    # vector of length n.boot
-    num.errs <- do.call(c, lapply(bootStuff, function(x) 
-        x[["num.errs"]]))
+    # vectors of length n.boot
+    num.match.errs <- do.call(c, lapply(bootStuff, function(x) 
+        x[["num.match.errs"]]))
+    num.times.ps.form.changed <- do.call(c, lapply(bootStuff, function(x) 
+        x[["num.times.ps.form.changed"]]))
+    num.times.prog.form.changed <- do.call(c, lapply(bootStuff, function(x) 
+        x[["num.times.prog.form.changed"]]))
+    num.times.out.form.changed <- do.call(c, lapply(bootStuff, function(x) 
+        x[["num.times.out.form.changed"]]))
 
     # matrix: row = resample; col = subject
     # columns are in 'easy' order
@@ -362,7 +376,10 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     # TODO: return NA if no model given
     est.TE.lm <- mean(est.TEs.lm, na.rm= TRUE)
 
-    tot.errs <- sum(num.errs, na.rm= TRUE)
+    tot.match.errs <- sum(num.match.errs, na.rm= TRUE)
+    tot.times.ps.form.changed <- sum(num.times.ps.form.changed)
+    tot.times.prog.form.changed <- sum(num.times.prog.form.changed)
+    tot.times.out.form.changed <- sum(num.times.out.form.changed)
 
     # Efron calculations: Regular & BC
     NUM.THINGS.RETURNED.BY.EE <- 2
@@ -427,10 +444,13 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         conf.int.lm.efron.bc = GetConfInt(est.TE.lm, est.SE.lm.efron.bc, conf.level),
 
         # scalars
-        n.boot        = n.boot,
-        tot.errs      = tot.errs,
-        conf.level    = conf.level,
-        avg.num.pairs = mean(num.pairs),
+        n.boot         = n.boot,
+        tot.match.errs = tot.match.errs,
+        tot.times.ps.form.changed   = tot.times.ps.form.changed, 
+        tot.times.prog.form.changed = tot.times.prog.form.changed, 
+        tot.times.out.form.changed  = tot.times.out.form.changed, 
+        conf.level     = conf.level,
+        avg.num.pairs  = mean(num.pairs),
 
         # vectors of length n.boot
         est.TEs    = est.TEs,
