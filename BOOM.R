@@ -1,5 +1,6 @@
 BOOM <- function(dat, n.boot, tx.indicator, outcome, 
     distance.type= "propensity",
+    matching.pkg= "Matching",
     recalc.distance= TRUE,
     propensity.formula = NULL, 
     prognostic.formula = NULL, 
@@ -9,7 +10,8 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     return.dat= TRUE, 
     conf.level= 0.95,
     exact.var.names= NULL, 
-    caliper= 0.2, replace= FALSE
+    caliper= 0.2, replace= FALSE,
+    threshold= NA
     ){
     # Returns a vector of various summary values from the BOOM procedure
 
@@ -18,6 +20,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     # tx.indicator: name of the treatment indicator variable in dat (must be 1/0 for now)
     # outcome: name of the continuous outcome variable in dat
     # distance.type: one of "propensity" (propensity score), "prognostic" (prognostic score), or "MD" (Mahalanobis) 
+    # matching.pkg: one of "Matching" or "nbpMatching"
     # recalc.distance (boolean): re-calculate the PS or other distance measure in each resample?
     # propensity.formula: propensity score formula to use w/ lrm
     # prognostic.formula: prognostic score formula. Must not contain factor variables.
@@ -27,7 +30,9 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     # return.dat (boolean): Return the original dataset?
     # conf.level: level to use for confidence intervals
     # exact.var.names: vector of names of variables on which to match exactly
-    # caliper through end of list: as in Matching::Match
+    # caliper: as in Matching::Match
+    # replace: as in Matching::Match
+    # threshold: as in nbpMatching::nonbimatch
     
     N         <- nrow(dat) # tot number of subjects
     treat     <- dat[[tx.indicator]]
@@ -47,7 +52,9 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
     # TODO: allow chr/factor tx indicator?
     # TODO: return the whole call (all args used in call)
-    # TODO: for MD matching, switch to optimal nbp?
+    # TODO: error handling: can't have recalc.distance= FALSE & matching.pkg= "Matching"
+    #        with distance.type = "MD"
+    # TODO: message about not using both threshold and caliper
 
     # Argument checking
     # from t.test code: getAnywhere("t.test.default")
@@ -133,14 +140,14 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         } else if (distance.type == "prognostic") {
             progscore.tx.orig   <- progscore.orig[isTreated]
             progscore.ctrl.orig <- progscore.orig[isControl]
-        } else if (distance.type == "MD") {
-            # todo. Doing this would involve switching to nbpmatching
-            #   for the MD matching 
+        } else if (distance.type == "MD" & matching.pkg == "nbpMatching") {
+            # todo. 
         }
     }
 
     # This does not vary from boot to boot (because of the way sample is generated)
-    isControl.boot <- c(rep(FALSE, n.treated.orig), rep(TRUE, n.ctrl.orig))
+    isTreated.boot <- c(rep(TRUE, n.treated.orig), rep(FALSE, n.ctrl.orig))
+    isControl.boot <- !isTreated.boot
 
     bootStuff <- mclapply(1:n.boot, function(x) {
         # Modified from Austin & Small (2014) --- they did not condition on
@@ -219,19 +226,33 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 my.exact[MD.vars %in% exact.var.names] <- TRUE
             }
         }
-        my.weight <- 
-            ifelse(distance.type %in% c("propensity", "prognostic"), 
-            1, 2)
-        pairIndices <- GetPairs(
-            Tr            = boot.sample[[tx.indicator]],
-            X             = my.X,
-            exact         = my.exact,
-            caliper       = caliper,
-            replace       = replace,
-            Weight        = my.weight
-        )
+
+        if (matching.pkg == "Matching") {
+            my.weight <- 
+                ifelse(distance.type %in% c("propensity", "prognostic"), 
+                1, 2)
+            pairIndices <- GetPairs(
+                Tr            = isTreated.boot,
+                X             = my.X,
+                exact         = my.exact,
+                caliper       = caliper,
+                replace       = replace,
+                Weight        = my.weight
+            )
         # Tx indices are in 1st col, ctrl in 2nd col.
         # These indices are indices from boot.sample
+        } else if (matching.pkg == "nbpMatching") {
+            my.X <- cbind(isTreated.boot, my.X)
+            distmat <- distancematrix(gendistance(my.X, prevent = 1))
+            matchinfo <- nonbimatch(distmat, threshold= threshold)$matches[1:N, ]
+            # get the boot.sample indices of all units that have a legit match
+            toKeep <- matchinfo[with(matchinfo, Group2.Row <= N &
+                is.finite(Distance)), "Group1.Row"]
+            # TODO: make this NULL if no matches
+            pairIndices <- cbind(toKeep[toKeep <= n.treated.orig],
+                toKeep[toKeep > n.treated.orig])
+        }
+
 
         # We are handling PS estimation/matching errors 
         #    by skipping that resample.  
