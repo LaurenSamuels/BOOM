@@ -188,9 +188,9 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         est.mean.tx.tmp <- est.mean.ctrl.tmp <- est.TE.lm.tmp <- NA
         count.vector.tmp <- rep(0, N)
         num.match.errs.tmp <- 0
-        num.times.ps.form.changed.tmp <- NA
+        num.times.ps.form.changed.tmp   <- NA
         num.times.prog.form.changed.tmp <- NA
-        num.times.out.form.changed.tmp <- NA
+        num.times.out.form.changed.tmp  <- NA
         
         logitPS.ordered.tmp <- rep(NA, N)
         count.vector.matched.tmp <- rep(0, N)
@@ -200,6 +200,8 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             if (distance.type == "propensity") {
                 # the original propensity formula might not work in this sample
                 # TODO: maybe: instead of flag, save list of terms removed??
+                # TODO: the CheckAndFix function needs some more steps:
+                #      remove term if singular cov. matrix
                 ps.check <- CheckAndFixFormula(boot.sample, propensity.formula)
                 num.times.ps.form.changed.tmp <- ps.check$removedTermFlag
                 logitPS <- 
@@ -225,8 +227,8 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 progscore <- c(progscore.tx.orig[tx.sample.indices], 
                     progscore.ctrl.orig[ctrl.sample.indices])
             } else if (distance.type == "MD" & matching.pkg == "nbpMatching") {
-                distmat <- distmat.tx.ctrl.orig[all.orig.ids.easy.insample,
-                    all.orig.ids.easy.insample]
+                distmat <- distancematrix(distmat.tx.ctrl.orig[all.orig.ids.easy.insample,
+                    all.orig.ids.easy.insample])
             }
         }
 
@@ -416,7 +418,8 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     tot.match.errs <- sum(num.match.errs, na.rm= TRUE)
     tot.times.ps.form.changed <- sum(num.times.ps.form.changed)
     tot.times.prog.form.changed <- sum(num.times.prog.form.changed)
-    tot.times.out.form.changed <- sum(num.times.out.form.changed)
+    tot.times.out.form.changed <- 
+        if (is.null(outcome.formula)) NA else sum(num.times.out.form.changed, na.rm= TRUE)
 
     # Efron calculations: Regular & BC
     NUM.THINGS.RETURNED.BY.EE <- 2
