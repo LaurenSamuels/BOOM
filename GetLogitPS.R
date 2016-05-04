@@ -1,7 +1,7 @@
 GetLogitPS <- function(dat, lrm.formula){
-    capture.output({
+    tmp <- capture.output({
         fit <- tryCatch(
-            lrm(lrm.formula, data= dat, tol= my.tol),
+            lrm(lrm.formula, data= dat),
             error= function(e) return(NULL)
         )
     })
