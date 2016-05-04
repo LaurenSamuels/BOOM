@@ -202,8 +202,10 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 # TODO: maybe: instead of flag, save list of terms removed??
                 # TODO: the CheckAndFix function needs some more steps:
                 #      remove term if singular cov. matrix
-                ps.check <- CheckAndFixFormula(boot.sample, propensity.formula)
-                num.times.ps.form.changed.tmp <- ps.check$removedTermFlag
+                ps.check <- 
+                    CheckAndFixFormula(boot.sample, propensity.formula)
+                num.times.ps.form.changed.tmp <- 
+                    ps.check$removedTermFlag
                 logitPS <- 
                     GetLogitPS(boot.sample, ps.check$form)
             } else if (distance.type == "prognostic") {

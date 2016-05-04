@@ -1,7 +1,7 @@
 GetPairs <- function(Tr, X, exact, caliper, replace, Weight,
     Weight.matrix, restrict){
     # Return a matrix of pairs, with tx rownums in col 1 & ctrl rownums in col 2
-    # Return NULL if PS estimation fails or no matches found
+    # Return NULL if X is NULL or no matches found
 
     # all parameters are as in Matching::Match
 

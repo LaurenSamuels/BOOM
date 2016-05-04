@@ -7,8 +7,8 @@ CheckAndFixFormula <- function(dat, form) {
     form.terms <- terms(form)
     form.response <- all.vars(form[[2]])
 
-
-    gt1.unique <- apply(mod.matrix, 2, function(x) length(unique(x)) > 1)
+    gt1.unique <- 
+        apply(mod.matrix, 2, function(x) length(unique(x)) > 1)
     sum.gt1.unique <- sum(gt1.unique)
     if((sum.gt1.unique == n.terms) | 
         ((sum.gt1.unique == n.terms - 1) & "(Intercept)" %in% 
