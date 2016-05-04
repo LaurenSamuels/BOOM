@@ -189,6 +189,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         count.vector.tmp <- rep(0, N)
         num.match.errs.tmp <- 0
         num.times.ps.form.changed.tmp   <- NA
+        num.times.ps.form.failed.tmp   <- NA
         num.times.prog.form.changed.tmp <- NA
         num.times.out.form.changed.tmp  <- NA
         
@@ -206,8 +207,10 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                     CheckAndFixFormula(boot.sample, propensity.formula)
                 num.times.ps.form.changed.tmp <- 
                     ps.check$removedTermFlag
+                num.times.ps.form.failed.tmp <- 0
                 logitPS <- 
                     GetLogitPS(boot.sample, ps.check$form)
+                if (is.null(logitPS)) num.times.ps.form.failed.tmp <- 1 
             } else if (distance.type == "prognostic") {
                 # the original prognostic formula might not work in this ctrl sample.
                 #   (If it works in ctrl sample, it will work in whole boot.sample)
@@ -339,6 +342,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             # TODO: these are all called "num," but really they're 0/1 flags
             num.match.errs              = num.match.errs.tmp,
             num.times.ps.form.changed   = num.times.ps.form.changed.tmp, 
+            num.times.ps.form.failed   = num.times.ps.form.failed.tmp, 
             num.times.prog.form.changed = num.times.prog.form.changed.tmp, 
             num.times.out.form.changed  = num.times.out.form.changed.tmp, 
 
@@ -381,6 +385,8 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         x[["num.match.errs"]]))
     num.times.ps.form.changed <- do.call(c, lapply(bootStuff, function(x) 
         x[["num.times.ps.form.changed"]]))
+    num.times.ps.form.failed <- do.call(c, lapply(bootStuff, function(x) 
+        x[["num.times.ps.form.failed"]]))
     num.times.prog.form.changed <- do.call(c, lapply(bootStuff, function(x) 
         x[["num.times.prog.form.changed"]]))
     num.times.out.form.changed <- do.call(c, lapply(bootStuff, function(x) 
@@ -419,6 +425,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
     tot.match.errs <- sum(num.match.errs, na.rm= TRUE)
     tot.times.ps.form.changed <- sum(num.times.ps.form.changed)
+    tot.times.ps.form.failed <- sum(num.times.ps.form.failed)
     tot.times.prog.form.changed <- sum(num.times.prog.form.changed)
     tot.times.out.form.changed <- 
         if (is.null(outcome.formula)) NA else sum(num.times.out.form.changed, na.rm= TRUE)
@@ -489,6 +496,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         n.boot         = n.boot,
         tot.match.errs = tot.match.errs,
         tot.times.ps.form.changed   = tot.times.ps.form.changed, 
+        tot.times.ps.form.failed    = tot.times.ps.form.failed, 
         tot.times.prog.form.changed = tot.times.prog.form.changed, 
         tot.times.out.form.changed  = tot.times.out.form.changed, 
         conf.level     = conf.level,
