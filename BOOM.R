@@ -329,7 +329,12 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             count.vector.matched.tmp[as.numeric(names(both.tbl.matched))] <-
                 both.tbl.matched
         } else { # we did not get a match in this resample
-            cat("Hit problem in boot", x, ".\n") 
+            # TODO: I took out the cat statement because it might
+            #   interfere w/mclapply. But it would be good to have
+            #   a different way to track the errors. Maybe
+            #   return the whole 1/0 error vecs in addition to the
+            #   total counts??
+            #cat("Hit problem in boot", x, ".\n") 
             num.match.errs.tmp <- 1
         } # end processing for resamples with errors in PS estimation or matching
 
