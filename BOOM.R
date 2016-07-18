@@ -224,6 +224,11 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                     cbind(isTreated.boot, boot.sample[, MD.vars]), 
                     prevent = 1))
             }
+            # Note that if distance.type == "MD" & matching.pkg =="Matching",
+            #   recalculation of distance is built-in (required) at this point.
+            # I think we could allow the distance to not be recalculated
+            #   by supplying a custom covariance matrix to Match(), but
+            #   I'm not sure and I don't see a reason to investigate at this point
         } else { # using a fixed distance
             if (distance.type == "propensity") {
                 logitPS <- c(logitPS.tx.orig[tx.sample.indices], 
