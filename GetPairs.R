@@ -1,5 +1,4 @@
-GetPairs <- function(Tr, X, exact, caliper, replace, Weight,
-    Weight.matrix, restrict){
+GetPairs <- function(Tr, X, exact, caliper, replace, Weight) {
     # Return a matrix of pairs, with tx rownums in col 1 & ctrl rownums in col 2
     # Return NULL if X is NULL or no matches found
 
