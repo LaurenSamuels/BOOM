@@ -535,7 +535,22 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         count.vector = count.vector,
         BOOM.wts     = BOOM.wts,
 
-        dat= if (return.dat) dat else NA
+        dat= if (return.dat) dat else NA,
+
+        distance.type= distance.type,
+        matching.pkg= matching.pkg,
+        recalc.distance= recalc.distance,
+        propensity.formula = propensity.formula, 
+        prognostic.formula = prognostic.formula, 
+        outcome.formula= outcome.formula, 
+        MD.vars= MD.vars,
+        mc.cores= mc.cores, 
+        seed= seed,
+        conf.level= conf.level,
+        exact.var.names= exact.var.names, 
+        caliper= caliper, 
+        replace= replace,
+        threshold= threshold
     )
 }
 
