@@ -1,5 +1,5 @@
 BOOM <- function(dat, n.boot, tx.indicator, outcome, 
-    distance.type= "propensity",
+    distance.type= "logitPropensity",
     matching.pkg= "Matching",
     recalc.distance= TRUE,
     propensity.formula = NULL, 
@@ -19,7 +19,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     # n.boot: number of bootstrap resamples to use
     # tx.indicator: name of the treatment indicator variable in dat (must be 1/0 for now)
     # outcome: name of the continuous outcome variable in dat
-    # distance.type: one of "propensity" (propensity score), "prognostic" (prognostic score), or "MD" (Mahalanobis) 
+    # distance.type: one of "propensity" (propensity score), "logitPropensity (logit propensity score), "prognostic" (prognostic score), or "MD" (Mahalanobis) 
     # matching.pkg: one of "Matching" or "nbpMatching"
     # recalc.distance (boolean): re-calculate the PS or other distance measure in each resample?
     # propensity.formula: propensity score formula to use w/ lrm
@@ -141,9 +141,12 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
     # for use w/ non-recalculated distances
     if (!recalc.distance) {
-        if (distance.type == "propensity") {
+        if (distance.type == "logitPropensity") {
             logitPS.tx.orig   <- logitPS.orig[isTreated]
             logitPS.ctrl.orig <- logitPS.orig[isControl]
+        } else if (distance.type == "propensity") {
+            PS.tx.orig   <- PS.orig[isTreated]
+            PS.ctrl.orig <- PS.orig[isControl]
         } else if (distance.type == "prognostic") {
             progscore.tx.orig   <- progscore.orig[isTreated]
             progscore.ctrl.orig <- progscore.orig[isControl]
@@ -198,7 +201,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
 
         if (recalc.distance) {
-            if (distance.type == "propensity") {
+            if (distance.type %in% c("logitPropensity", "propensity")) {
                 # the original propensity formula might not work in this sample
                 # TODO: maybe: instead of flag, save list of terms removed??
                 # TODO: the CheckAndFix function needs some more steps:
@@ -210,7 +213,12 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
                 num.times.ps.form.failed.tmp <- 0
                 logitPS <- 
                     GetLogitPS(boot.sample, ps.check$form)
-                if (is.null(logitPS)) num.times.ps.form.failed.tmp <- 1 
+                if (is.null(logitPS)) {
+                    num.times.ps.form.failed.tmp <- 1
+                    PS <- NULL
+                } else {
+                    PS <- InvLogit(logitPS)
+                }
             } else if (distance.type == "prognostic") {
                 # the original prognostic formula might not work in this ctrl sample.
                 #   (If it works in ctrl sample, it will work in whole boot.sample)
@@ -230,9 +238,12 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             #   by supplying a custom covariance matrix to Match(), but
             #   I'm not sure and I don't see a reason to investigate at this point
         } else { # using a fixed distance
-            if (distance.type == "propensity") {
+            if (distance.type == "logitPropensity") {
                 logitPS <- c(logitPS.tx.orig[tx.sample.indices], 
                     logitPS.ctrl.orig[ctrl.sample.indices])
+            } else if (distance.type == "propensity") {
+                PS <- c(PS.tx.orig[tx.sample.indices], 
+                    PS.ctrl.orig[ctrl.sample.indices])
             } else if (distance.type == "prognostic") {
                 progscore <- c(progscore.tx.orig[tx.sample.indices], 
                     progscore.ctrl.orig[ctrl.sample.indices])
@@ -242,8 +253,10 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
             }
         }
 
-        if (distance.type == "propensity") {
+        if (distance.type == "logitPropensity") {
             my.X <- logitPS
+        } else if (distance.type == "propensity") {
+            my.X <- PS
         } else if (distance.type == "prognostic") {
             my.X <- progscore
         } else if (distance.type == "MD" & matching.pkg == "Matching") {
@@ -253,7 +266,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
         if (is.null(exact.var.names)) {
             my.exact <- FALSE
         } else { # we want to match exactly on some vars
-            if (distance.type %in% c("propensity", "prognostic")) {
+            if (distance.type %in% c("logitPropensity", "propensity", "prognostic")) {
                 my.X <- cbind(my.X, boot.sample[, exact.var.names])
                 my.exact <- 
                     c(FALSE, rep(TRUE, length(exact.var.names)))
@@ -265,7 +278,7 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
 
         if (matching.pkg == "Matching") {
             my.weight <- 
-                ifelse(distance.type %in% c("propensity", "prognostic"), 
+                ifelse(distance.type %in% c("logitPropensity", "propensity", "prognostic"), 
                 1, 2)
             pairIndices <- GetPairs(
                 Tr            = isTreated.boot,
