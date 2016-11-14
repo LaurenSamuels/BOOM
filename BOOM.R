@@ -57,6 +57,8 @@ BOOM <- function(dat, n.boot, tx.indicator, outcome,
     # TODO: message about not using both threshold and caliper
     # TODO: require n.boot >= 2 OR put in processing for n.boot= 1
     # TODO: am still getting "singular information matrix in lrm.fit (rank= 24 ).  Offending variable(s):" on occasion. CheckAndFix is not taking care of all collinearity, just collinearity w/ the intercept. Keep adding to the function.
+    # TODO: move todo's to separate file
+    # TODO: continue removing option of matching with replacement
 
 
     # Argument checking
